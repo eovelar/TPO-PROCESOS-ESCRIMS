@@ -61,6 +61,7 @@ public class Main {
         if (encontrado != null) {
             System.out.println("Scrim encontrado: "
                     + encontrado.getJuego());
+
             System.out.println("Formato: "
                     + encontrado.getFormato());
         }
@@ -101,5 +102,36 @@ public class Main {
             System.out.println("Operacion rechazada: "
                     + e.getMessage());
         }
+
+        System.out.println("\n--- Prueba de cupos ---");
+
+        Scrim scrimPrueba = new Scrim(
+                2, "Valorant", "1v1", "LAS",
+                4, 7, 80,
+                LocalDateTime.of(2026, 11, 6, 20, 0),
+                30, 2
+        );
+
+        System.out.println("Estado inicial: "
+                + scrimPrueba.getEstadoActual());
+
+        scrimPrueba.registrarJugadorAceptado();
+
+        System.out.println("Jugadores aceptados: "
+                + scrimPrueba.getJugadoresAceptados());
+
+        System.out.println("Estado con un jugador: "
+                + scrimPrueba.getEstadoActual());
+
+        scrimPrueba.registrarJugadorAceptado();
+
+        System.out.println("Jugadores aceptados: "
+                + scrimPrueba.getJugadoresAceptados());
+
+        System.out.println("Cupos disponibles: "
+                + scrimPrueba.getCuposDisponibles());
+
+        System.out.println("Estado final: "
+                + scrimPrueba.getEstadoActual());
     }
 }
