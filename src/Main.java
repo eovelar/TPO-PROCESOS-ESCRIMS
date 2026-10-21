@@ -3,6 +3,8 @@ import domain.Usuario;
 import domain.Scrim;
 import domain.Postulacion;
 import service.PostulacionService;
+import service.ScrimService;
+import state.ScrimContext;
 
 import java.time.LocalDateTime;
 
@@ -29,6 +31,8 @@ public class Main {
 
         PostulacionService servicio = new PostulacionService();
 
+        System.out.println("--- Prueba de postulaciones ---");
+
         System.out.println("Jugador 1 cumple requisitos: "
                 + servicio.cumpleRequisitos(jugador1, scrim));
 
@@ -43,5 +47,59 @@ public class Main {
                 + postulacion.getUsuario().getUsername());
 
         System.out.println("Estado: " + postulacion.getEstado());
+
+        System.out.println("\n--- Prueba de ScrimService ---");
+
+        ScrimService scrimService = new ScrimService();
+        scrimService.agregarScrim(scrim);
+
+        System.out.println("Cantidad de scrims: "
+                + scrimService.listarScrims().size());
+
+        Scrim encontrado = scrimService.buscarPorId(1);
+
+        if (encontrado != null) {
+            System.out.println("Scrim encontrado: "
+                    + encontrado.getJuego());
+            System.out.println("Formato: "
+                    + encontrado.getFormato());
+        }
+
+        System.out.println("\n--- Prueba del patron State ---");
+
+        ScrimContext contexto = new ScrimContext();
+
+        System.out.println(contexto.getEstadoActual());
+
+        contexto.completarCupos();
+        System.out.println(contexto.getEstadoActual());
+
+        contexto.confirmarJugadores();
+        System.out.println(contexto.getEstadoActual());
+
+        contexto.iniciar();
+        System.out.println(contexto.getEstadoActual());
+
+        contexto.finalizar();
+        System.out.println(contexto.getEstadoActual());
+
+        System.out.println("\n--- Prueba de cancelacion ---");
+
+        ScrimContext cancelado = new ScrimContext();
+
+        System.out.println("Estado inicial: "
+                + cancelado.getEstadoActual());
+
+        cancelado.cancelar();
+
+        System.out.println("Estado final: "
+                + cancelado.getEstadoActual());
+
+        try {
+            cancelado.iniciar();
+        } catch (IllegalStateException e) {
+            System.out.println("Operacion rechazada: "
+                    + e.getMessage());
+        }
     }
 }
