@@ -231,6 +231,19 @@ public class Scrim {
     }
 
     public void iniciar() {
+
+        if (!getEstadoActual().equals("Confirmado")) {
+            throw new IllegalStateException(
+                    "El scrim debe estar confirmado para iniciar"
+            );
+        }
+
+        if (LocalDateTime.now().isBefore(fechaHora)) {
+            throw new IllegalStateException(
+                    "Todavia no llego la fecha y hora de inicio"
+            );
+        }
+
         contexto.iniciar();
     }
 

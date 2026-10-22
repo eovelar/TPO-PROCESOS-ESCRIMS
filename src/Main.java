@@ -4,6 +4,7 @@ import domain.Scrim;
 import domain.Postulacion;
 import service.PostulacionService;
 import service.ScrimService;
+import service.ScrimScheduler;
 import state.ScrimContext;
 
 import java.time.LocalDateTime;
@@ -220,5 +221,97 @@ public class Main {
 
         System.out.println("Estado final: "
                 + scrimConfirmaciones.getEstadoActual());
+
+        System.out.println("\n--- Prueba de inicio de partida ---");
+
+        try {
+            scrimConfirmaciones.iniciar();
+
+            System.out.println("Estado: "
+                    + scrimConfirmaciones.getEstadoActual());
+
+        } catch (IllegalStateException e) {
+            System.out.println("Inicio rechazado: "
+                    + e.getMessage());
+        }
+
+        System.out.println("\n--- Prueba de inicio permitido ---");
+
+        Scrim scrimPasado = new Scrim(
+                5, "Valorant", "1v1", "LAS",
+                4, 7, 80,
+                LocalDateTime.now().minusMinutes(5),
+                30, 2
+        );
+
+        Postulacion p1 = servicio.crearPostulacion(
+                5, jugador1, scrimPasado, "Duelist"
+        );
+
+        Postulacion p2 = servicio.crearPostulacion(
+                6, jugador3, scrimPasado, "Controller"
+        );
+
+        servicio.aceptarPostulacion(p1);
+        servicio.aceptarPostulacion(p2);
+
+        scrimPasado.confirmarJugador(jugador1);
+        scrimPasado.confirmarJugador(jugador3);
+
+        System.out.println("Estado antes de iniciar: "
+                + scrimPasado.getEstadoActual());
+
+        scrimPasado.iniciar();
+
+        System.out.println("Estado despues de iniciar: "
+                + scrimPasado.getEstadoActual());
+
+        System.out.println("\n--- Prueba del scheduler ---");
+
+        ScrimService servicioAutomatico = new ScrimService();
+
+        Scrim scrimAutomatico = new Scrim(
+                6, "Valorant", "1v1", "LAS",
+                4, 7, 80,
+                LocalDateTime.now().minusMinutes(1),
+                30, 2
+        );
+
+        Postulacion auto1 = servicio.crearPostulacion(
+                7, jugador1, scrimAutomatico, "Duelist"
+        );
+
+        Postulacion auto2 = servicio.crearPostulacion(
+                8, jugador3, scrimAutomatico, "Controller"
+        );
+
+        servicio.aceptarPostulacion(auto1);
+        servicio.aceptarPostulacion(auto2);
+
+        scrimAutomatico.confirmarJugador(jugador1);
+        scrimAutomatico.confirmarJugador(jugador3);
+
+        servicioAutomatico.agregarScrim(scrimAutomatico);
+
+        System.out.println("Estado antes del scheduler: "
+                + scrimAutomatico.getEstadoActual());
+
+        ScrimScheduler scheduler = new ScrimScheduler(servicioAutomatico);
+
+        try {
+            scheduler.iniciarScheduler();
+
+            Thread.sleep(1500);
+
+            System.out.println("Estado despues del scheduler: "
+                    + scrimAutomatico.getEstadoActual());
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.out.println("Prueba interrumpida");
+
+        } finally {
+            scheduler.detenerScheduler();
+        }
     }
 }
