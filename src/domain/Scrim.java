@@ -1,4 +1,3 @@
-
 package domain;
 
 import state.ScrimContext;
@@ -31,9 +30,9 @@ public class Scrim {
                  int rangoMin, int rangoMax, int latenciaMax,
                  LocalDateTime fechaHora, int duracion, int cupos) {
 
-        if (cupos <= 0) {
+        if (cupos <= 0 || cupos % 2 != 0) {
             throw new IllegalArgumentException(
-                    "La cantidad de cupos debe ser mayor a cero"
+                    "La cantidad de cupos debe ser positiva y par"
             );
         }
 
@@ -242,7 +241,7 @@ public class Scrim {
             );
         }
 
-        if (!equipos.isEmpty()) {
+        if (tieneEquiposArmados()) {
             throw new IllegalStateException(
                     "Los equipos ya fueron armados"
             );
@@ -251,12 +250,6 @@ public class Scrim {
         if (nuevosEquipos == null || nuevosEquipos.size() != 2) {
             throw new IllegalArgumentException(
                     "El scrim debe tener dos equipos"
-            );
-        }
-
-        if (cupos % 2 != 0) {
-            throw new IllegalArgumentException(
-                    "No se pueden formar dos equipos iguales"
             );
         }
 
@@ -314,15 +307,83 @@ public class Scrim {
             );
         }
 
-        equipos.addAll(nuevosEquipos);
+        for (Equipo equipo : nuevosEquipos) {
+            equipos.add(equipo.copiar());
+        }
     }
 
     public List<Equipo> getEquipos() {
-        return new ArrayList<>(equipos);
+
+        List<Equipo> copias = new ArrayList<>();
+
+        for (Equipo equipo : equipos) {
+            copias.add(equipo.copiar());
+        }
+
+        return copias;
     }
 
     public boolean tieneEquiposArmados() {
         return !equipos.isEmpty();
+    }
+
+    private void validarModificacionEquipos() {
+
+        String estado = getEstadoActual();
+
+        if (!estado.equals("Lobby armado")
+                && !estado.equals("Confirmado")) {
+            throw new IllegalStateException(
+                    "No se pueden modificar equipos en este estado"
+            );
+        }
+
+        if (!tieneEquiposArmados()) {
+            throw new IllegalStateException(
+                    "Los equipos todavia no fueron armados"
+            );
+        }
+    }
+
+    private Equipo buscarEquipoInterno(int lado) {
+
+        for (Equipo equipo : equipos) {
+            if (equipo.getLado() == lado) {
+                return equipo;
+            }
+        }
+
+        throw new IllegalArgumentException(
+                "No existe un equipo con ese lado"
+        );
+    }
+
+    public void asignarRol(int lado, Usuario jugador, String rol) {
+
+        validarModificacionEquipos();
+
+        Equipo equipo = buscarEquipoInterno(lado);
+
+        equipo.asignarRol(jugador, rol);
+    }
+
+    public void intercambiarJugadores(int lado1, int lado2,
+                                      Usuario jugador1, Usuario jugador2) {
+
+        validarModificacionEquipos();
+
+        if (lado1 == lado2) {
+            throw new IllegalArgumentException(
+                    "Se deben seleccionar dos equipos diferentes"
+            );
+        }
+
+        Equipo equipo1 = buscarEquipoInterno(lado1);
+        Equipo equipo2 = buscarEquipoInterno(lado2);
+
+        equipo1.intercambiarJugadores(
+                equipo2, jugador1, jugador2
+        );
     }
 
     public void iniciar() {

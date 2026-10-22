@@ -1,3 +1,4 @@
+
 import domain.Equipo;
 import domain.Postulacion;
 import domain.Scrim;
@@ -25,7 +26,7 @@ public class PruebaScrimEquipos {
         Scrim scrim = new Scrim(
                 10, "Valorant", "1v1", "LAS",
                 4, 7, 80,
-                LocalDateTime.now().plusDays(1),
+                LocalDateTime.now().minusMinutes(5),
                 30, 2
         );
 
@@ -45,38 +46,84 @@ public class PruebaScrimEquipos {
         postulacionService.aceptarPostulacion(postulacion1);
         postulacionService.aceptarPostulacion(postulacion2);
 
-        System.out.println("--- Prueba de equipos ---");
+        ScrimEquipoService equipoService = new ScrimEquipoService();
 
-        System.out.println("Estado: " + scrim.getEstadoActual());
+        List<Equipo> equipos = equipoService.armarEquipos(scrim);
 
-        ScrimEquipoService equipoService =
-                new ScrimEquipoService();
+        Equipo equipo1 = equipos.get(0);
+        Equipo equipo2 = equipos.get(1);
 
-        equipoService.armarEquipos(scrim);
+        System.out.println("--- Equipos iniciales ---");
+        mostrarEquipos(scrim);
 
-        System.out.println("Equipos guardados: "
-                + scrim.getEquipos().size());
+        System.out.println("\n--- Asignacion de roles ---");
 
-        List<Equipo> equipos = scrim.getEquipos();
+        equipoService.asignarRol(
+                scrim, equipo1, jugador1, "Duelist"
+        );
 
-        for (Equipo equipo : equipos) {
-            System.out.println("\nEquipo " + equipo.getLado());
+        equipoService.asignarRol(
+                scrim, equipo2, jugador2, "Controller"
+        );
 
-            for (Usuario jugador : equipo.getJugadores()) {
-                System.out.println("- " + jugador.getUsername());
-            }
-        }
+        mostrarEquipos(scrim);
 
-        System.out.println("\n--- Prueba de duplicacion ---");
+        System.out.println("\n--- Intercambio de jugadores ---");
+
+        equipoService.intercambiarJugadores(
+                scrim, equipo1, equipo2, jugador1, jugador2
+        );
+
+        mostrarEquipos(scrim);
+
+        System.out.println("\n--- Prueba de copias ---");
+
+        Equipo copia = scrim.getEquipos().get(0);
+
+        copia.asignarRol(jugador2, "Sentinel");
+
+        System.out.println("Rol en la copia: "
+                + copia.getRolJugador(jugador2));
+
+        System.out.println("Rol original: "
+                + scrim.getEquipos().get(0).getRolJugador(jugador2));
+
+        System.out.println("\n--- Confirmacion e inicio ---");
+
+        scrim.confirmarJugador(jugador1);
+        scrim.confirmarJugador(jugador2);
+
+        System.out.println("Estado confirmado: "
+                + scrim.getEstadoActual());
+
+        scrim.iniciar();
+
+        System.out.println("Estado actual: "
+                + scrim.getEstadoActual());
+
+        System.out.println("\n--- Modificacion durante la partida ---");
 
         try {
-            equipoService.armarEquipos(scrim);
+            equipoService.asignarRol(
+                    scrim, equipo1, jugador2, "Sentinel"
+            );
         } catch (IllegalStateException e) {
-            System.out.println("Operacion rechazada: "
+            System.out.println("Cambio rechazado: "
                     + e.getMessage());
         }
+    }
 
-        System.out.println("Cantidad final de equipos: "
-                + scrim.getEquipos().size());
+    private static void mostrarEquipos(Scrim scrim) {
+
+        for (Equipo equipo : scrim.getEquipos()) {
+
+            System.out.println("Equipo " + equipo.getLado());
+
+            for (Usuario jugador : equipo.getJugadores()) {
+                System.out.println("- " + jugador.getUsername()
+                        + " | Rol: "
+                        + equipo.getRolJugador(jugador));
+            }
+        }
     }
 }

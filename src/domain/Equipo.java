@@ -1,4 +1,3 @@
-
 package domain;
 
 import java.util.ArrayList;
@@ -93,7 +92,7 @@ public class Equipo {
     }
 
     public void eliminarJugador(Usuario usuario) {
-        if (usuario == null || !contieneJugador(usuario)) {
+        if (!contieneJugador(usuario)) {
             throw new IllegalArgumentException(
                     "El jugador no pertenece al equipo"
             );
@@ -172,5 +171,14 @@ public class Equipo {
         if (rolPropio != null) {
             otroEquipo.asignarRol(jugadorPropio, rolPropio);
         }
+    }
+
+    public Equipo copiar() {
+        Equipo copia = new Equipo(id, lado, capacidadMaxima);
+
+        copia.jugadores.addAll(jugadores);
+        copia.roles.putAll(roles);
+
+        return copia;
     }
 }
