@@ -22,6 +22,11 @@ public class Main {
                 "hash456", "LAS", 2
         );
 
+        Usuario jugador3 = new Usuario(
+                3, "Jugador3", "jugador3@mail.com",
+                "hash789", "LAS", 6
+        );
+
         Scrim scrim = new Scrim(
                 1, "Valorant", "5v5", "LAS",
                 4, 7, 80,
@@ -115,7 +120,7 @@ public class Main {
         System.out.println("Estado inicial: "
                 + scrimPrueba.getEstadoActual());
 
-        scrimPrueba.registrarJugadorAceptado();
+        scrimPrueba.registrarJugadorAceptado(jugador1);
 
         System.out.println("Jugadores aceptados: "
                 + scrimPrueba.getJugadoresAceptados());
@@ -123,7 +128,14 @@ public class Main {
         System.out.println("Estado con un jugador: "
                 + scrimPrueba.getEstadoActual());
 
-        scrimPrueba.registrarJugadorAceptado();
+        try {
+            scrimPrueba.registrarJugadorAceptado(jugador1);
+        } catch (IllegalArgumentException e) {
+            System.out.println("Jugador duplicado: "
+                    + e.getMessage());
+        }
+
+        scrimPrueba.registrarJugadorAceptado(jugador3);
 
         System.out.println("Jugadores aceptados: "
                 + scrimPrueba.getJugadoresAceptados());
@@ -133,5 +145,80 @@ public class Main {
 
         System.out.println("Estado final: "
                 + scrimPrueba.getEstadoActual());
+
+        System.out.println("Jugadores del scrim:");
+
+        for (Usuario jugador : scrimPrueba.getJugadores()) {
+            System.out.println("- " + jugador.getUsername());
+        }
+
+        System.out.println("\n--- Prueba de aceptacion de postulaciones ---");
+
+        Scrim scrimPostulaciones = new Scrim(
+                3, "Valorant", "1v1", "LAS",
+                4, 7, 80,
+                LocalDateTime.of(2026, 11, 7, 20, 0),
+                30, 2
+        );
+
+        Postulacion nuevaPostulacion = servicio.crearPostulacion(
+                2, jugador1, scrimPostulaciones, "Duelist"
+        );
+
+        System.out.println("Estado inicial: "
+                + nuevaPostulacion.getEstado());
+
+        System.out.println("Cupos disponibles antes: "
+                + scrimPostulaciones.getCuposDisponibles());
+
+        servicio.aceptarPostulacion(nuevaPostulacion);
+
+        System.out.println("Estado final: "
+                + nuevaPostulacion.getEstado());
+
+        System.out.println("Cupos disponibles despues: "
+                + scrimPostulaciones.getCuposDisponibles());
+
+        System.out.println("Jugadores aceptados: "
+                + scrimPostulaciones.getJugadoresAceptados());
+
+        System.out.println("\n--- Prueba de confirmaciones ---");
+
+        Scrim scrimConfirmaciones = new Scrim(
+                4, "Valorant", "1v1", "LAS",
+                4, 7, 80,
+                LocalDateTime.of(2026, 11, 8, 20, 0),
+                30, 2
+        );
+
+        Postulacion postulacion1 = servicio.crearPostulacion(
+                3, jugador1, scrimConfirmaciones, "Duelist"
+        );
+
+        Postulacion postulacion2 = servicio.crearPostulacion(
+                4, jugador3, scrimConfirmaciones, "Controller"
+        );
+
+        servicio.aceptarPostulacion(postulacion1);
+        servicio.aceptarPostulacion(postulacion2);
+
+        System.out.println("Estado con cupos completos: "
+                + scrimConfirmaciones.getEstadoActual());
+
+        scrimConfirmaciones.confirmarJugador(jugador1);
+
+        System.out.println("Confirmados: "
+                + scrimConfirmaciones.getCantidadConfirmados());
+
+        System.out.println("Estado con una confirmacion: "
+                + scrimConfirmaciones.getEstadoActual());
+
+        scrimConfirmaciones.confirmarJugador(jugador3);
+
+        System.out.println("Confirmados: "
+                + scrimConfirmaciones.getCantidadConfirmados());
+
+        System.out.println("Estado final: "
+                + scrimConfirmaciones.getEstadoActual());
     }
 }
