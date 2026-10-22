@@ -1,4 +1,3 @@
-
 import domain.Equipo;
 import domain.Postulacion;
 import domain.Scrim;
@@ -30,27 +29,35 @@ public class PruebaScrimEquipos {
                 30, 2
         );
 
-        PostulacionService postulacionService = new PostulacionService();
+        PostulacionService postulacionService =
+                new PostulacionService();
 
-        Postulacion postulacion1 = postulacionService.crearPostulacion(
-                1, jugador1, scrim, "Duelist"
-        );
+        Postulacion postulacion1 =
+                postulacionService.crearPostulacion(
+                        1, jugador1, scrim, "Duelist"
+                );
 
-        Postulacion postulacion2 = postulacionService.crearPostulacion(
-                2, jugador2, scrim, "Controller"
-        );
+        Postulacion postulacion2 =
+                postulacionService.crearPostulacion(
+                        2, jugador2, scrim, "Controller"
+                );
 
         postulacionService.aceptarPostulacion(postulacion1);
         postulacionService.aceptarPostulacion(postulacion2);
 
-        System.out.println("--- Prueba de equipos del scrim ---");
+        System.out.println("--- Prueba de equipos ---");
+
         System.out.println("Estado: " + scrim.getEstadoActual());
-        System.out.println("Jugadores aceptados: "
-                + scrim.getJugadoresAceptados());
 
-        ScrimEquipoService equipoService = new ScrimEquipoService();
+        ScrimEquipoService equipoService =
+                new ScrimEquipoService();
 
-        List<Equipo> equipos = equipoService.armarEquipos(scrim);
+        equipoService.armarEquipos(scrim);
+
+        System.out.println("Equipos guardados: "
+                + scrim.getEquipos().size());
+
+        List<Equipo> equipos = scrim.getEquipos();
 
         for (Equipo equipo : equipos) {
             System.out.println("\nEquipo " + equipo.getLado());
@@ -60,6 +67,16 @@ public class PruebaScrimEquipos {
             }
         }
 
-        System.out.println("\nCantidad de equipos: " + equipos.size());
+        System.out.println("\n--- Prueba de duplicacion ---");
+
+        try {
+            equipoService.armarEquipos(scrim);
+        } catch (IllegalStateException e) {
+            System.out.println("Operacion rechazada: "
+                    + e.getMessage());
+        }
+
+        System.out.println("Cantidad final de equipos: "
+                + scrim.getEquipos().size());
     }
 }

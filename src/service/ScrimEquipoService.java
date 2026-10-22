@@ -24,6 +24,12 @@ public class ScrimEquipoService {
             );
         }
 
+        if (scrim.tieneEquiposArmados()) {
+            throw new IllegalStateException(
+                    "Los equipos ya fueron armados"
+            );
+        }
+
         int cupos = scrim.getCupos();
 
         if (cupos % 2 != 0) {
@@ -45,6 +51,7 @@ public class ScrimEquipoService {
         List<Usuario> jugadores = scrim.getJugadores();
 
         for (int i = 0; i < jugadores.size(); i++) {
+
             if (i < jugadoresPorEquipo) {
                 equipo1.agregarJugador(jugadores.get(i));
             } else {
@@ -56,6 +63,8 @@ public class ScrimEquipoService {
         equipos.add(equipo1);
         equipos.add(equipo2);
 
-        return equipos;
+        scrim.guardarEquipos(equipos);
+
+        return scrim.getEquipos();
     }
 }

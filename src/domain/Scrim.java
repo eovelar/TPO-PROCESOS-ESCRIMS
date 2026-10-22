@@ -5,7 +5,9 @@ import state.ScrimContext;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class Scrim {
 
@@ -22,6 +24,7 @@ public class Scrim {
 
     private final List<Usuario> jugadoresAceptados;
     private final List<Confirmacion> confirmaciones;
+    private final List<Equipo> equipos;
     private final ScrimContext contexto;
 
     public Scrim(int id, String juego, String formato, String region,
@@ -47,6 +50,7 @@ public class Scrim {
 
         this.jugadoresAceptados = new ArrayList<>();
         this.confirmaciones = new ArrayList<>();
+        this.equipos = new ArrayList<>();
         this.contexto = new ScrimContext();
     }
 
@@ -228,6 +232,97 @@ public class Scrim {
         }
 
         contexto.confirmarJugadores();
+    }
+
+    public void guardarEquipos(List<Equipo> nuevosEquipos) {
+
+        if (!getEstadoActual().equals("Lobby armado")) {
+            throw new IllegalStateException(
+                    "Los equipos solo se pueden armar con el lobby completo"
+            );
+        }
+
+        if (!equipos.isEmpty()) {
+            throw new IllegalStateException(
+                    "Los equipos ya fueron armados"
+            );
+        }
+
+        if (nuevosEquipos == null || nuevosEquipos.size() != 2) {
+            throw new IllegalArgumentException(
+                    "El scrim debe tener dos equipos"
+            );
+        }
+
+        if (cupos % 2 != 0) {
+            throw new IllegalArgumentException(
+                    "No se pueden formar dos equipos iguales"
+            );
+        }
+
+        Set<Integer> ids = new HashSet<>();
+        Set<Integer> lados = new HashSet<>();
+
+        for (Equipo equipo : nuevosEquipos) {
+
+            if (equipo == null) {
+                throw new IllegalArgumentException(
+                        "El equipo no puede ser nulo"
+                );
+            }
+
+            if (!lados.add(equipo.getLado())) {
+                throw new IllegalArgumentException(
+                        "Los equipos deben tener lados diferentes"
+                );
+            }
+
+            if (equipo.getCantidadJugadores() != cupos / 2) {
+                throw new IllegalArgumentException(
+                        "Los equipos deben tener la misma cantidad de jugadores"
+                );
+            }
+
+            for (Usuario jugador : equipo.getJugadores()) {
+
+                if (!ids.add(jugador.getId())) {
+                    throw new IllegalArgumentException(
+                            "Un jugador no puede estar en ambos equipos"
+                    );
+                }
+
+                boolean aceptado = false;
+
+                for (Usuario participante : jugadoresAceptados) {
+                    if (participante.getId() == jugador.getId()) {
+                        aceptado = true;
+                        break;
+                    }
+                }
+
+                if (!aceptado) {
+                    throw new IllegalArgumentException(
+                            "El jugador no fue aceptado en el scrim"
+                    );
+                }
+            }
+        }
+
+        if (ids.size() != cupos) {
+            throw new IllegalArgumentException(
+                    "Faltan jugadores para completar los equipos"
+            );
+        }
+
+        equipos.addAll(nuevosEquipos);
+    }
+
+    public List<Equipo> getEquipos() {
+        return new ArrayList<>(equipos);
+    }
+
+    public boolean tieneEquiposArmados() {
+        return !equipos.isEmpty();
     }
 
     public void iniciar() {
