@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0e0e0c">
+    <title>eScrims | Encontrá tu próxima partida</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+</head>
+<body>
+
+<header class="header">
+    <div class="container header-content">
+        <a href="/" class="logo">eScrims<span>_</span></a>
+
+        <nav class="navigation" aria-label="Navegación principal">
+            <a href="#partidas" class="nav-link active"><span>01</span>Explorar</a>
+            <a href="#como-funciona" class="nav-link"><span>02</span>Cómo funciona</a>
+        </nav>
+
+        <span class="header-tag">Temporada 2026</span>
+    </div>
+</header>
+
+<main>
+    <section class="hero">
+        <div class="container hero-content">
+            <div class="hero-text">
+                <p class="eyebrow">// Scrims competitivas</p>
+
+                <h1>
+                    Encontrá tu<br>
+                    próxima <em>partida.</em>
+                </h1>
+
+                <p class="hero-lead">
+                    Conectá con jugadores de tu nivel, descubrí
+                    scrims competitivas y llevá tu equipo al
+                    siguiente nivel.
+                </p>
+
+                <div class="hero-actions">
+                    <a href="#partidas" class="primary-button">
+                        Explorar partidas
+                        <span aria-hidden="true">→</span>
+                    </a>
+                    <a href="#como-funciona" class="ghost-link">Cómo funciona</a>
+                </div>
+            </div>
+
+            <div class="hero-board" aria-hidden="true">
+                <div class="board-head">
+                    <span>● LOBBY ABIERTO</span>
+                    <span>5V5 · LAS</span>
+                </div>
+
+                <div class="board-vs">
+                    <span>EQUIPO A</span>
+                    <strong>VS</strong>
+                    <span>EQUIPO B</span>
+                </div>
+
+                <div class="board-slots">
+                    <div class="team">
+                        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="pending"></i>
+                    </div>
+                    <div class="team">
+                        <i class="on"></i><i class="on"></i><i class="on"></i><i class="pending"></i><i></i>
+                    </div>
+                </div>
+
+                <div class="board-foot">
+                    <span>Esperando jugadores</span>
+                    <strong>7/10</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="ticker" aria-hidden="true">
+            <div class="ticker-track">
+                <span>Valorant</span><span>League of Legends</span><span>Counter-Strike 2</span><span>5v5</span><span>LAS</span><span>LAN</span><span>BR</span>
+                <span>Valorant</span><span>League of Legends</span><span>Counter-Strike 2</span><span>5v5</span><span>LAS</span><span>LAN</span><span>BR</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="explore-section" id="partidas">
+        <div class="container">
+            <div class="section-top">
+                <div>
+                    <span class="section-eyebrow">// Matchmaking</span>
+                    <h2>Explorar scrims</h2>
+                    <p class="section-description">
+                        Encontrá partidas disponibles para tu juego y región.
+                    </p>
+                </div>
+
+                <div class="results-badge" id="contador">
+                    Cargando partidas...
+                </div>
+            </div>
+
+            <div class="filters">
+                <div class="filter-field search-field">
+                    <label for="busqueda">Buscar juego</label>
+                    <input
+                            type="search"
+                            id="busqueda"
+                            placeholder="Valorant, LoL, CS2..."
+                            autocomplete="off"
+                    >
+                </div>
+
+                <div class="filter-field">
+                    <label for="filtroJuego">Juego</label>
+                    <select id="filtroJuego">
+                        <option value="">Todos los juegos</option>
+                    </select>
+                </div>
+
+                <div class="filter-field">
+                    <label for="filtroRegion">Región</label>
+                    <select id="filtroRegion">
+                        <option value="">Todas las regiones</option>
+                    </select>
+                </div>
+
+                <button type="button" class="clear-button" id="limpiarFiltros">
+                    Limpiar filtros
+                </button>
+            </div>
+
+            <div class="list-header">
+                <h3>Partidas disponibles</h3>
+                <span id="estadoCarga">Conectando con el servidor...</span>
+            </div>
+
+            <div id="listaScrims" class="scrims-grid" aria-live="polite">
+                <div class="message-card">
+                    Cargando partidas...
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="info-section" id="como-funciona">
+        <div class="container">
+            <div class="info-heading">
+                <div>
+                    <span class="section-eyebrow">// Cómo funciona</span>
+                    <h2>Competí a tu manera.</h2>
+                </div>
+                <p class="info-note">De la búsqueda al lobby en tres pasos.</p>
+            </div>
+
+            <ol class="info-grid">
+                <li class="info-card">
+                    <span class="step-number">01</span>
+                    <h3>Explorá partidas</h3>
+                    <p>Buscá scrims según el juego, el formato y la región.</p>
+                </li>
+
+                <li class="info-card">
+                    <span class="step-number">02</span>
+                    <h3>Encontrá tu equipo</h3>
+                    <p>Participá en partidas con jugadores de un nivel compatible.</p>
+                </li>
+
+                <li class="info-card">
+                    <span class="step-number">03</span>
+                    <h3>Prepará el lobby</h3>
+                    <p>Organizá equipos, confirmá participantes y comenzá a competir.</p>
+                </li>
+            </ol>
+        </div>
+    </section>
+</main>
+
+<footer class="footer">
+    <div class="container footer-content">
+        <span class="logo">eScrims<span>_</span></span>
+        <p>Plataforma de organización de partidas competitivas.</p>
+        <span>Proyecto académico · 2026</span>
+    </div>
+</footer>
+
+</body>
+</html>
