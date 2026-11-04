@@ -63,8 +63,6 @@ public class Scrim {
         this.jugadoresAceptados = new ArrayList<>();
         this.confirmaciones = new ArrayList<>();
         this.equipos = new ArrayList<>();
-
-        // cada scrim comienza buscando jugadores
         this.contexto = new ScrimContext();
     }
 
@@ -138,7 +136,6 @@ public class Scrim {
             );
         }
 
-        // evita que un mismo jugador ocupe dos cupos
         for (Usuario jugador : jugadoresAceptados) {
             if (jugador.getId() == usuario.getId()) {
                 throw new IllegalArgumentException(
@@ -155,7 +152,6 @@ public class Scrim {
 
         jugadoresAceptados.add(usuario);
 
-        // cambia de estado al completar el lobby
         if (getCuposDisponibles() == 0) {
             contexto.completarCupos();
         }
@@ -199,7 +195,6 @@ public class Scrim {
             );
         }
 
-        // comprueba que el jugador pertenezca al scrim
         boolean participa = false;
 
         for (Usuario jugador : jugadoresAceptados) {
@@ -215,7 +210,6 @@ public class Scrim {
             );
         }
 
-        // no permite confirmar dos veces
         for (Confirmacion confirmacion : confirmaciones) {
             if (confirmacion.getUsuario().getId() == usuario.getId()) {
                 throw new IllegalStateException(
@@ -231,7 +225,6 @@ public class Scrim {
         confirmacion.confirmar();
         confirmaciones.add(confirmacion);
 
-        // todos confirmaron, el scrim cambia de estado
         if (getCantidadConfirmados() == cupos) {
             contexto.confirmarJugadores();
         }
@@ -277,7 +270,6 @@ public class Scrim {
         Set<Integer> ids = new HashSet<>();
         Set<Integer> lados = new HashSet<>();
 
-        // valida que los equipos no tengan jugadores repetidos
         for (Equipo equipo : nuevosEquipos) {
 
             if (equipo == null) {
@@ -329,7 +321,6 @@ public class Scrim {
             );
         }
 
-        // guarda copias para evitar cambios externos
         for (Equipo equipo : nuevosEquipos) {
             equipos.add(equipo.copiar());
         }
@@ -354,7 +345,6 @@ public class Scrim {
 
         String estado = getEstadoActual();
 
-        // los equipos solo se modifican antes de iniciar
         if (!estado.equals("Lobby armado")
                 && !estado.equals("Confirmado")) {
             throw new IllegalStateException(
@@ -409,6 +399,53 @@ public class Scrim {
         );
     }
 
+    public void registrarBaja(Usuario usuario) {
+
+        if (usuario == null) {
+            throw new IllegalArgumentException(
+                    "El usuario no puede ser nulo"
+            );
+        }
+
+        String estado = getEstadoActual();
+
+        if (!estado.equals("Buscando jugadores")
+                && !estado.equals("Lobby armado")
+                && !estado.equals("Confirmado")) {
+            throw new IllegalStateException(
+                    "No se pueden registrar bajas en este estado"
+            );
+        }
+
+        boolean encontrado = false;
+
+        for (Usuario jugador : jugadoresAceptados) {
+            if (jugador.getId() == usuario.getId()) {
+                encontrado = true;
+                break;
+            }
+        }
+
+        if (!encontrado) {
+            throw new IllegalArgumentException(
+                    "El jugador no participa en este scrim"
+            );
+        }
+
+        // vuelve a buscar jugadores cuando se libera un cupo
+        contexto.registrarBaja();
+
+        jugadoresAceptados.removeIf(
+                jugador -> jugador.getId() == usuario.getId()
+        );
+
+        // se reinician las confirmaciones del lobby
+        confirmaciones.clear();
+
+        // los equipos se vuelven a armar con el reemplazo
+        equipos.clear();
+    }
+
     public void iniciar() {
 
         if (!getEstadoActual().equals("Confirmado")) {
@@ -417,7 +454,6 @@ public class Scrim {
             );
         }
 
-        // impide iniciar antes de la fecha programada
         if (LocalDateTime.now().isBefore(fechaHora)) {
             throw new IllegalStateException(
                     "Todavia no llego la fecha y hora de inicio"
