@@ -1,3 +1,4 @@
+
 package domain;
 
 import state.ScrimContext;
@@ -36,6 +37,18 @@ public class Scrim {
             );
         }
 
+        if (rangoMin > rangoMax) {
+            throw new IllegalArgumentException(
+                    "El rango minimo no puede superar al maximo"
+            );
+        }
+
+        if (fechaHora == null) {
+            throw new IllegalArgumentException(
+                    "La fecha y hora son obligatorias"
+            );
+        }
+
         this.id = id;
         this.juego = juego;
         this.formato = formato;
@@ -50,6 +63,8 @@ public class Scrim {
         this.jugadoresAceptados = new ArrayList<>();
         this.confirmaciones = new ArrayList<>();
         this.equipos = new ArrayList<>();
+
+        // cada scrim comienza buscando jugadores
         this.contexto = new ScrimContext();
     }
 
@@ -123,6 +138,7 @@ public class Scrim {
             );
         }
 
+        // evita que un mismo jugador ocupe dos cupos
         for (Usuario jugador : jugadoresAceptados) {
             if (jugador.getId() == usuario.getId()) {
                 throw new IllegalArgumentException(
@@ -139,6 +155,7 @@ public class Scrim {
 
         jugadoresAceptados.add(usuario);
 
+        // cambia de estado al completar el lobby
         if (getCuposDisponibles() == 0) {
             contexto.completarCupos();
         }
@@ -156,6 +173,7 @@ public class Scrim {
     }
 
     public int getCantidadConfirmados() {
+
         int cantidad = 0;
 
         for (Confirmacion confirmacion : confirmaciones) {
@@ -181,6 +199,7 @@ public class Scrim {
             );
         }
 
+        // comprueba que el jugador pertenezca al scrim
         boolean participa = false;
 
         for (Usuario jugador : jugadoresAceptados) {
@@ -196,6 +215,7 @@ public class Scrim {
             );
         }
 
+        // no permite confirmar dos veces
         for (Confirmacion confirmacion : confirmaciones) {
             if (confirmacion.getUsuario().getId() == usuario.getId()) {
                 throw new IllegalStateException(
@@ -211,6 +231,7 @@ public class Scrim {
         confirmacion.confirmar();
         confirmaciones.add(confirmacion);
 
+        // todos confirmaron, el scrim cambia de estado
         if (getCantidadConfirmados() == cupos) {
             contexto.confirmarJugadores();
         }
@@ -256,6 +277,7 @@ public class Scrim {
         Set<Integer> ids = new HashSet<>();
         Set<Integer> lados = new HashSet<>();
 
+        // valida que los equipos no tengan jugadores repetidos
         for (Equipo equipo : nuevosEquipos) {
 
             if (equipo == null) {
@@ -307,6 +329,7 @@ public class Scrim {
             );
         }
 
+        // guarda copias para evitar cambios externos
         for (Equipo equipo : nuevosEquipos) {
             equipos.add(equipo.copiar());
         }
@@ -331,6 +354,7 @@ public class Scrim {
 
         String estado = getEstadoActual();
 
+        // los equipos solo se modifican antes de iniciar
         if (!estado.equals("Lobby armado")
                 && !estado.equals("Confirmado")) {
             throw new IllegalStateException(
@@ -363,7 +387,6 @@ public class Scrim {
         validarModificacionEquipos();
 
         Equipo equipo = buscarEquipoInterno(lado);
-
         equipo.asignarRol(jugador, rol);
     }
 
@@ -394,6 +417,7 @@ public class Scrim {
             );
         }
 
+        // impide iniciar antes de la fecha programada
         if (LocalDateTime.now().isBefore(fechaHora)) {
             throw new IllegalStateException(
                     "Todavia no llego la fecha y hora de inicio"

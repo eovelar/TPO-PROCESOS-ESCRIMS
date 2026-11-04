@@ -1,3 +1,4 @@
+package pruebas;
 
 import domain.Scrim;
 import domain.Usuario;

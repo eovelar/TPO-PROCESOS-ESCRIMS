@@ -6,12 +6,16 @@ public class ScrimContext {
     private ScrimState estado;
 
     public ScrimContext() {
+        // todos los scrims comienzan buscando jugadores
         this.estado = new BuscandoState();
     }
 
     public void setEstado(ScrimState estado) {
+
         if (estado == null) {
-            throw new IllegalArgumentException("El estado no puede ser nulo");
+            throw new IllegalArgumentException(
+                    "El estado no puede ser nulo"
+            );
         }
 
         this.estado = estado;

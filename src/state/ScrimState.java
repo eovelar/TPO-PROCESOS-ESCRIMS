@@ -1,6 +1,9 @@
+
 package state;
 
 public interface ScrimState {
+
+    // define las operaciones que puede realizar cada estado del scrim
 
     void completarCupos(ScrimContext context);
 

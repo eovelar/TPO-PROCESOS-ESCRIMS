@@ -16,20 +16,25 @@ public class ScrimService {
     }
 
     public void agregarScrim(Scrim scrim) {
+
         if (scrim == null) {
-            throw new IllegalArgumentException("El scrim no puede ser nulo");
+            throw new IllegalArgumentException(
+                    "El scrim no puede ser nulo"
+            );
         }
 
-        for (Scrim existente : scrims) {
-            if (existente.getId() == scrim.getId()) {
-                throw new IllegalArgumentException("Ya existe un scrim con ese ID");
-            }
+        // evita registrar dos partidas con el mismo id
+        if (buscarPorId(scrim.getId()) != null) {
+            throw new IllegalArgumentException(
+                    "Ya existe un scrim con ese ID"
+            );
         }
 
         scrims.add(scrim);
     }
 
     public Scrim buscarPorId(int id) {
+
         for (Scrim scrim : scrims) {
             if (scrim.getId() == id) {
                 return scrim;
@@ -44,6 +49,7 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarPorJuego(String juego) {
+
         List<Scrim> resultados = new ArrayList<>();
 
         if (juego == null || juego.isBlank()) {
@@ -60,6 +66,7 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarPorFormato(String formato) {
+
         List<Scrim> resultados = new ArrayList<>();
 
         if (formato == null || formato.isBlank()) {
@@ -76,6 +83,7 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarPorRegion(String region) {
+
         List<Scrim> resultados = new ArrayList<>();
 
         if (region == null || region.isBlank()) {
@@ -92,9 +100,11 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarPorRango(int rangoJugador) {
+
         List<Scrim> resultados = new ArrayList<>();
 
         for (Scrim scrim : scrims) {
+
             if (rangoJugador >= scrim.getRangoMin()
                     && rangoJugador <= scrim.getRangoMax()) {
                 resultados.add(scrim);
@@ -105,6 +115,7 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarPorFecha(LocalDate fecha) {
+
         List<Scrim> resultados = new ArrayList<>();
 
         if (fecha == null) {
@@ -121,11 +132,14 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarPorLatencia(int latenciaJugador) {
-        List<Scrim> resultados = new ArrayList<>();
 
         if (latenciaJugador < 0) {
-            throw new IllegalArgumentException("La latencia no puede ser negativa");
+            throw new IllegalArgumentException(
+                    "La latencia no puede ser negativa"
+            );
         }
+
+        List<Scrim> resultados = new ArrayList<>();
 
         for (Scrim scrim : scrims) {
             if (latenciaJugador <= scrim.getLatenciaMax()) {
@@ -137,6 +151,7 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarPorEstado(String estado) {
+
         List<Scrim> resultados = new ArrayList<>();
 
         if (estado == null || estado.isBlank()) {
@@ -153,9 +168,11 @@ public class ScrimService {
     }
 
     public List<Scrim> buscarConCuposDisponibles() {
+
         List<Scrim> resultados = new ArrayList<>();
 
         for (Scrim scrim : scrims) {
+
             if (scrim.getCuposDisponibles() > 0
                     && scrim.getEstadoActual().equals("Buscando jugadores")) {
                 resultados.add(scrim);
@@ -175,12 +192,15 @@ public class ScrimService {
             String estado,
             boolean soloDisponibles) {
 
-        List<Scrim> resultados = new ArrayList<>();
-
         if (latenciaJugador != null && latenciaJugador < 0) {
-            throw new IllegalArgumentException("La latencia no puede ser negativa");
+            throw new IllegalArgumentException(
+                    "La latencia no puede ser negativa"
+            );
         }
 
+        List<Scrim> resultados = new ArrayList<>();
+
+        // aplica solamente los filtros que fueron indicados
         for (Scrim scrim : scrims) {
 
             if (juego != null && !juego.isBlank()
@@ -219,6 +239,7 @@ public class ScrimService {
                 continue;
             }
 
+            // descarta partidas completas o que ya no buscan jugadores
             if (soloDisponibles
                     && (scrim.getCuposDisponibles() == 0
                     || !scrim.getEstadoActual().equals("Buscando jugadores"))) {

@@ -1,3 +1,4 @@
+package pruebas;
 
 import domain.Equipo;
 import domain.Postulacion;

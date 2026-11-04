@@ -15,6 +15,7 @@ public class ScrimScheduler {
     private ScheduledExecutorService scheduler;
 
     public ScrimScheduler(ScrimService scrimService) {
+
         if (scrimService == null) {
             throw new IllegalArgumentException(
                     "El servicio de scrims es obligatorio"
@@ -27,14 +28,20 @@ public class ScrimScheduler {
     public void verificarInicios() {
 
         List<Scrim> scrims = scrimService.listarScrims();
+        LocalDateTime ahora = LocalDateTime.now();
 
+        // revisa las partidas que ya llegaron a su horario
         for (Scrim scrim : scrims) {
+
+            if (scrim == null) {
+                continue;
+            }
 
             if (!scrim.getEstadoActual().equals("Confirmado")) {
                 continue;
             }
 
-            if (LocalDateTime.now().isBefore(scrim.getFechaHora())) {
+            if (ahora.isBefore(scrim.getFechaHora())) {
                 continue;
             }
 
@@ -46,8 +53,8 @@ public class ScrimScheduler {
                                 + scrim.getId()
                 );
 
-            } catch (IllegalStateException e) {
-                System.out.println(
+            } catch (RuntimeException e) {
+                System.err.println(
                         "No se pudo iniciar el scrim "
                                 + scrim.getId() + ": "
                                 + e.getMessage()
@@ -64,8 +71,18 @@ public class ScrimScheduler {
 
         scheduler = Executors.newSingleThreadScheduledExecutor();
 
+        // verifica los inicios cada cinco segundos
         scheduler.scheduleAtFixedRate(
-                this::verificarInicios,
+                () -> {
+                    try {
+                        verificarInicios();
+                    } catch (RuntimeException e) {
+                        System.err.println(
+                                "Error al verificar scrims: "
+                                        + e.getMessage()
+                        );
+                    }
+                },
                 0,
                 5,
                 TimeUnit.SECONDS
@@ -74,7 +91,7 @@ public class ScrimScheduler {
 
     public void detenerScheduler() {
 
-        if (scheduler != null) {
+        if (scheduler != null && !scheduler.isShutdown()) {
             scheduler.shutdown();
         }
     }

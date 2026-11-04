@@ -1,3 +1,4 @@
+
 package service;
 
 import domain.Equipo;
@@ -31,9 +32,15 @@ public class ScrimEquipoService {
 
         int cupos = scrim.getCupos();
 
-        if (cupos % 2 != 0) {
+        if (cupos <= 0 || cupos % 2 != 0) {
             throw new IllegalArgumentException(
-                    "La cantidad de jugadores debe ser par"
+                    "La cantidad de jugadores debe ser positiva y par"
+            );
+        }
+
+        if (scrim.getJugadoresAceptados() != cupos) {
+            throw new IllegalStateException(
+                    "Todavia faltan jugadores para armar los equipos"
             );
         }
 
@@ -49,6 +56,7 @@ public class ScrimEquipoService {
 
         List<Usuario> jugadores = scrim.getJugadores();
 
+        // distribuye los jugadores entre los dos equipos
         for (int i = 0; i < jugadores.size(); i++) {
             if (i < jugadoresPorEquipo) {
                 equipo1.agregarJugador(jugadores.get(i));
@@ -61,6 +69,7 @@ public class ScrimEquipoService {
         equipos.add(equipo1);
         equipos.add(equipo2);
 
+        // guarda los equipos dentro del scrim
         scrim.guardarEquipos(equipos);
 
         return scrim.getEquipos();
@@ -71,8 +80,21 @@ public class ScrimEquipoService {
 
         validarEquipo(scrim, equipo);
 
+        if (jugador == null) {
+            throw new IllegalArgumentException(
+                    "El jugador no puede ser nulo"
+            );
+        }
+
+        if (rol == null || rol.isBlank()) {
+            throw new IllegalArgumentException(
+                    "El rol no puede estar vacio"
+            );
+        }
+
+        // el scrim controla si se permite modificar el equipo
         scrim.asignarRol(
-                equipo.getLado(), jugador, rol
+                equipo.getLado(), jugador, rol.trim()
         );
     }
 
@@ -89,6 +111,13 @@ public class ScrimEquipoService {
             );
         }
 
+        if (jugador1 == null || jugador2 == null) {
+            throw new IllegalArgumentException(
+                    "Los jugadores son obligatorios"
+            );
+        }
+
+        // delega el intercambio para respetar el estado del scrim
         scrim.intercambiarJugadores(
                 equipo1.getLado(),
                 equipo2.getLado(),

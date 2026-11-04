@@ -5,7 +5,16 @@ import domain.Usuario;
 import domain.Scrim;
 import domain.Postulacion;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class PostulacionService {
+
+    private final List<Postulacion> postulaciones;
+
+    public PostulacionService() {
+        this.postulaciones = new ArrayList<>();
+    }
 
     public boolean cumpleRequisitos(Usuario usuario, Scrim scrim) {
 
@@ -13,8 +22,7 @@ public class PostulacionService {
             return false;
         }
 
-        if (usuario.getRegion() == null ||
-                scrim.getRegion() == null) {
+        if (usuario.getRegion() == null || scrim.getRegion() == null) {
             return false;
         }
 
@@ -22,11 +30,15 @@ public class PostulacionService {
             return false;
         }
 
-        if (usuario.getRango() < scrim.getRangoMin()) {
-            return false;
-        }
+        // usa el rango del juego si el usuario lo tiene configurado
+        Integer rangoJuego = usuario.getRangoPorJuego(scrim.getJuego());
 
-        if (usuario.getRango() > scrim.getRangoMax()) {
+        int rangoJugador = rangoJuego != null
+                ? rangoJuego
+                : usuario.getRango();
+
+        if (rangoJugador < scrim.getRangoMin()
+                || rangoJugador > scrim.getRangoMax()) {
             return false;
         }
 
@@ -48,6 +60,31 @@ public class PostulacionService {
             );
         }
 
+        if (scrim.getCuposDisponibles() == 0) {
+            throw new IllegalStateException(
+                    "No quedan cupos disponibles"
+            );
+        }
+
+        if (rolDeseado == null || rolDeseado.isBlank()) {
+            throw new IllegalArgumentException(
+                    "El rol deseado es obligatorio"
+            );
+        }
+
+        // evita postulaciones repetidas para una misma partida
+        for (Postulacion existente : postulaciones) {
+
+            if (existente.getScrim().getId() == scrim.getId()
+                    && existente.getUsuario().getId() == usuario.getId()
+                    && !existente.getEstado().equals("Rechazada")) {
+
+                throw new IllegalArgumentException(
+                        "El usuario ya tiene una postulacion para este scrim"
+                );
+            }
+        }
+
         for (Usuario jugador : scrim.getJugadores()) {
             if (jugador.getId() == usuario.getId()) {
                 throw new IllegalArgumentException(
@@ -56,16 +93,18 @@ public class PostulacionService {
             }
         }
 
-        return new Postulacion(id, usuario, scrim, rolDeseado);
+        Postulacion postulacion = new Postulacion(
+                id, usuario, scrim, rolDeseado.trim()
+        );
+
+        postulaciones.add(postulacion);
+
+        return postulacion;
     }
 
     public void aceptarPostulacion(Postulacion postulacion) {
 
-        if (postulacion == null) {
-            throw new IllegalArgumentException(
-                    "La postulacion no puede ser nula"
-            );
-        }
+        validarPostulacion(postulacion);
 
         if (!postulacion.getEstado().equals("Pendiente")) {
             throw new IllegalStateException(
@@ -82,17 +121,48 @@ public class PostulacionService {
             );
         }
 
+        if (!scrim.getEstadoActual().equals("Buscando jugadores")) {
+            throw new IllegalStateException(
+                    "El scrim ya no acepta jugadores"
+            );
+        }
+
         if (scrim.getCuposDisponibles() == 0) {
             throw new IllegalStateException(
                     "No quedan cupos disponibles"
             );
         }
 
+        // ocupa un cupo y actualiza el estado de la postulacion
         scrim.registrarJugadorAceptado(usuario);
         postulacion.aceptar();
     }
 
     public void rechazarPostulacion(Postulacion postulacion) {
+
+        validarPostulacion(postulacion);
+
+        postulacion.rechazar();
+    }
+
+    public List<Postulacion> listarPostulaciones() {
+        return new ArrayList<>(postulaciones);
+    }
+
+    public List<Postulacion> buscarPorScrim(int idScrim) {
+
+        List<Postulacion> resultados = new ArrayList<>();
+
+        for (Postulacion postulacion : postulaciones) {
+            if (postulacion.getScrim().getId() == idScrim) {
+                resultados.add(postulacion);
+            }
+        }
+
+        return resultados;
+    }
+
+    private void validarPostulacion(Postulacion postulacion) {
 
         if (postulacion == null) {
             throw new IllegalArgumentException(
@@ -100,6 +170,10 @@ public class PostulacionService {
             );
         }
 
-        postulacion.rechazar();
+        if (!postulaciones.contains(postulacion)) {
+            throw new IllegalArgumentException(
+                    "La postulacion no esta registrada en el servicio"
+            );
+        }
     }
 }
