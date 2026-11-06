@@ -60,6 +60,10 @@ button:disabled {
     cursor: not-allowed;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 3px;
@@ -817,7 +821,7 @@ button:disabled {
     font-size: 13px;
 }
 
-/* mis postulaciones */
+/* mis postulaciones y cuenta */
 
 .mis-postulaciones-section {
     padding: 85px 0 95px;
@@ -859,6 +863,7 @@ button:disabled {
 .lista-postulaciones {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
     gap: 16px;
 }
 
@@ -955,6 +960,142 @@ button:disabled {
     margin-top: 18px;
 }
 
+/* formularios de registro y login */
+
+#contenidoCuenta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 18px;
+    margin-top: 26px;
+}
+
+#contenidoCuenta > .organizador-card {
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+    padding: 28px;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-top: 3px solid var(--accent);
+    border-left: 1px solid var(--line-strong);
+}
+
+#contenidoCuenta > .organizador-card:hover {
+    background: var(--surface);
+    border-color: var(--line-strong);
+    border-top-color: var(--accent);
+}
+
+#contenidoCuenta .organizador-card > h3 {
+    font-family: var(--display);
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+}
+
+#contenidoCuenta .filter-field {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    min-width: 0;
+}
+
+#contenidoCuenta .filter-field:focus-within {
+    background: transparent;
+    box-shadow: none;
+}
+
+#contenidoCuenta .filter-field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+#contenidoCuenta .filter-field input,
+#contenidoCuenta .filter-field select {
+    display: block;
+    width: 100%;
+    height: 46px;
+    padding: 0 14px;
+    background-color: var(--bg);
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 500;
+    outline: none;
+    appearance: auto;
+    transition:
+            border-color 0.2s,
+            background 0.2s;
+}
+
+#contenidoCuenta .filter-field input:hover,
+#contenidoCuenta .filter-field select:hover {
+    border-color: #6d608c;
+}
+
+#contenidoCuenta .filter-field input:focus,
+#contenidoCuenta .filter-field select:focus {
+    border-color: var(--accent);
+    background-color: #1d1b26;
+    box-shadow: 0 0 0 2px rgba(159, 126, 255, 0.12);
+}
+
+#contenidoCuenta .filter-field input::placeholder {
+    color: #827b91;
+}
+
+#contenidoCuenta .filter-field select {
+    cursor: pointer;
+    color-scheme: dark;
+    background-color: var(--bg);
+}
+
+#contenidoCuenta .filter-field select option {
+    background: var(--surface);
+    color: var(--text);
+}
+
+#contenidoCuenta .postular-button {
+    align-self: flex-start;
+    width: 190px;
+    min-height: 44px;
+    margin-top: 8px;
+    padding: 11px 16px;
+    font-size: 11px;
+    letter-spacing: 0.3px;
+}
+
+#contenidoCuenta .postular-button:disabled {
+    opacity: 0.55;
+}
+
+#contenidoCuenta .actualizar-postulaciones {
+    align-self: flex-start;
+    margin-top: 16px;
+}
+
+#contenidoCuenta .organizador-jugador {
+    line-height: 1.7;
+}
+
 /* panel organizador */
 
 .organizador-section {
@@ -1029,6 +1170,7 @@ button:disabled {
 .lista-organizador {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
     gap: 16px;
 }
 
@@ -1121,7 +1263,6 @@ button:disabled {
 .organizador-aceptar:disabled,
 .organizador-rechazar:disabled {
     opacity: 0.45;
-    cursor: not-allowed;
 }
 
 .organizador-resuelto {
@@ -1424,7 +1565,8 @@ button:disabled {
 
 @media (max-width: 850px) {
     .lista-postulaciones,
-    .lista-organizador {
+    .lista-organizador,
+    #contenidoCuenta {
         grid-template-columns: 1fr;
     }
 
@@ -1432,6 +1574,10 @@ button:disabled {
     .organizador-encabezado {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    #contenidoCuenta > .organizador-card {
+        max-width: 650px;
     }
 }
 
@@ -1552,6 +1698,14 @@ button:disabled {
 
     .mis-postulaciones-acciones {
         flex-wrap: wrap;
+    }
+
+    #contenidoCuenta > .organizador-card {
+        padding: 22px;
+    }
+
+    #contenidoCuenta .postular-button {
+        width: 100%;
     }
 
     .organizador-resumen {

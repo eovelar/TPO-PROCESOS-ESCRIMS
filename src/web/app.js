@@ -8,15 +8,6 @@ const filtroJuego = document.getElementById("filtroJuego");
 const filtroRegion = document.getElementById("filtroRegion");
 const limpiarFiltros = document.getElementById("limpiarFiltros");
 
-let scrims = [];
-let misPostulaciones = [];
-let postulacionesOrganizador = [];
-
-let postulacionesCargadas = false;
-let procesandoSolicitud = false;
-
-const postulacionesEnProceso = new Set();
-
 const nombresJuegos = {
     Valorant: "VALORANT",
     LoL: "LEAGUE OF LEGENDS",
@@ -29,15 +20,22 @@ const iconosJuegos = {
     CS2: "CS2"
 };
 
-function crearElemento(etiqueta, clase = "", contenido) {
+let usuarioActual = null;
+let scrims = [];
+let misPostulaciones = [];
+let postulacionesOrganizador = [];
+
+let procesando = false;
+
+function crearElemento(etiqueta, clase = "", texto) {
     const elemento = document.createElement(etiqueta);
 
     if (clase) {
         elemento.className = clase;
     }
 
-    if (contenido !== undefined) {
-        elemento.textContent = contenido;
+    if (texto !== undefined) {
+        elemento.textContent = texto;
     }
 
     return elemento;
@@ -67,49 +65,45 @@ function formatearFecha(fecha) {
     }).format(valor);
 }
 
-function crearDetalle(nombre, valor) {
+function detalle(etiqueta, valor) {
     const fila = crearElemento("div", "detail-row");
 
     fila.append(
-        crearElemento("span", "", nombre),
+        crearElemento("span", "", etiqueta),
         crearElemento("strong", "", String(valor))
     );
 
     return fila;
 }
 
-function claseEstado(estado) {
-    switch (estado) {
-        case "Aceptada":
-            return "aceptada";
-        case "Rechazada":
-            return "rechazada";
-        default:
-            return "pendiente";
-    }
+function estadoClase(estado) {
+    return {
+        Pendiente: "pendiente",
+        Aceptada: "aceptada",
+        Rechazada: "rechazada"
+    }[estado] || "pendiente";
 }
 
-function crearEstado(estado, claseBase) {
+function estadoEtiqueta(estado) {
     return crearElemento(
         "span",
-        claseBase + " " + claseEstado(estado),
+        "postulacion-estado " + estadoClase(estado),
         estado.toUpperCase()
     );
 }
 
-function mostrarNotificacion(titulo, mensaje, tipo = "exito") {
+function notificar(titulo, mensaje, tipo = "exito") {
     let contenedor = document.getElementById("notificaciones");
 
     if (!contenedor) {
         contenedor = crearElemento("div", "notificaciones");
         contenedor.id = "notificaciones";
         contenedor.setAttribute("aria-live", "polite");
-        document.body.appendChild(contenedor);
+        document.body.append(contenedor);
     }
 
-    const notificacion = crearElemento(
-        "div",
-        "notificacion " + tipo
+    const aviso = crearElemento(
+        "div", "notificacion " + tipo
     );
 
     const icono = crearElemento(
@@ -119,8 +113,7 @@ function mostrarNotificacion(titulo, mensaje, tipo = "exito") {
     );
 
     const contenido = crearElemento(
-        "div",
-        "notificacion-contenido"
+        "div", "notificacion-contenido"
     );
 
     contenido.append(
@@ -129,721 +122,526 @@ function mostrarNotificacion(titulo, mensaje, tipo = "exito") {
     );
 
     const cerrar = crearElemento(
-        "button",
-        "notificacion-cerrar",
-        "×"
+        "button", "notificacion-cerrar", "×"
     );
 
     cerrar.type = "button";
-    cerrar.setAttribute("aria-label", "Cerrar notificación");
 
     const progreso = crearElemento(
-        "div",
-        "notificacion-progreso"
+        "div", "notificacion-progreso"
     );
 
-    let temporizador;
-    let cerrando = false;
+    aviso.append(icono, contenido, cerrar, progreso);
+    contenedor.append(aviso);
 
-    function quitarNotificacion() {
-        if (cerrando) {
+    let cerrado = false;
+
+    function eliminar() {
+        if (cerrado) {
             return;
         }
 
-        cerrando = true;
-        clearTimeout(temporizador);
-        notificacion.classList.add("saliendo");
+        cerrado = true;
+        aviso.classList.add("saliendo");
 
-        setTimeout(() => {
-            notificacion.remove();
-        }, 250);
+        setTimeout(() => aviso.remove(), 250);
     }
 
-    cerrar.addEventListener("click", quitarNotificacion);
-
-    notificacion.append(
-        icono,
-        contenido,
-        cerrar,
-        progreso
-    );
-
-    contenedor.appendChild(notificacion);
-
-    temporizador = setTimeout(quitarNotificacion, 5000);
+    cerrar.addEventListener("click", eliminar);
+    setTimeout(eliminar, 5000);
 }
 
-function crearEnlaceMenu(texto, destino) {
-    const navegacion = document.querySelector(".navigation");
-
-    if (!navegacion || navegacion.querySelector(
-        'a[href="' + destino + '"]'
-    )) {
-        return;
-    }
-
-    const enlace = crearElemento("a", "nav-link", texto);
-    enlace.href = destino;
-    navegacion.appendChild(enlace);
-}
-
-function crearSecciones() {
-    const explorar = document.getElementById("partidas");
-
-    const seccionJugador = crearElemento(
-        "section",
-        "mis-postulaciones-section"
-    );
-
-    seccionJugador.id = "mis-postulaciones";
-
-    const contenedorJugador = crearElemento("div", "container");
-
-    const encabezadoJugador = crearElemento(
-        "div",
-        "mis-postulaciones-encabezado"
-    );
-
-    const titulosJugador = crearElemento("div");
-
-    titulosJugador.append(
-        crearElemento("span", "section-eyebrow", "// Mi actividad"),
-        crearElemento(
-            "h2",
-            "mis-postulaciones-titulo",
-            "Mis postulaciones"
-        ),
-        crearElemento(
-            "p",
-            "section-description",
-            "Consultá el estado de tus solicitudes."
-        )
-    );
-
-    const accionesJugador = crearElemento(
-        "div",
-        "mis-postulaciones-acciones"
-    );
-
-    const contadorJugador = crearElemento(
-        "span",
-        "results-badge",
-        "0 solicitudes"
-    );
-
-    contadorJugador.id = "contadorPostulaciones";
-
-    const actualizarJugador = crearElemento(
-        "button",
-        "actualizar-postulaciones",
-        "ACTUALIZAR ↻"
-    );
-
-    actualizarJugador.type = "button";
-    actualizarJugador.addEventListener(
-        "click",
-        actualizarTodo
-    );
-
-    accionesJugador.append(contadorJugador, actualizarJugador);
-    encabezadoJugador.append(titulosJugador, accionesJugador);
-
-    const listaJugador = crearElemento(
-        "div",
-        "lista-postulaciones"
-    );
-
-    listaJugador.id = "listaPostulaciones";
-    listaJugador.setAttribute("aria-live", "polite");
-
-    contenedorJugador.append(encabezadoJugador, listaJugador);
-    seccionJugador.appendChild(contenedorJugador);
-
-    explorar.insertAdjacentElement(
-        "afterend",
-        seccionJugador
-    );
-
-    const seccionOrganizador = crearElemento(
-        "section",
-        "organizador-section"
-    );
-
-    seccionOrganizador.id = "organizador";
-
-    const contenedorOrganizador = crearElemento(
-        "div",
-        "container"
-    );
-
-    const encabezadoOrganizador = crearElemento(
-        "div",
-        "organizador-encabezado"
-    );
-
-    const titulosOrganizador = crearElemento("div");
-
-    titulosOrganizador.append(
-        crearElemento(
-            "span",
-            "section-eyebrow",
-            "// Gestión de partidas"
-        ),
-        crearElemento(
-            "h2",
-            "organizador-titulo",
-            "Panel del organizador"
-        ),
-        crearElemento(
-            "p",
-            "section-description",
-            "Revisá las solicitudes y administrá los participantes."
-        )
-    );
-
-    const etiquetaDemo = crearElemento(
-        "span",
-        "organizador-demo",
-        "MODO DEMO"
-    );
-
-    encabezadoOrganizador.append(
-        titulosOrganizador,
-        etiquetaDemo
-    );
-
-    const resumen = crearElemento(
-        "div",
-        "organizador-resumen"
-    );
-
-    resumen.id = "resumenOrganizador";
-
-    const barra = crearElemento(
-        "div",
-        "organizador-barra"
-    );
-
-    const subtitulo = crearElemento(
-        "h3",
-        "",
-        "Solicitudes recibidas"
-    );
-
-    const actualizarOrganizador = crearElemento(
-        "button",
-        "actualizar-postulaciones",
-        "ACTUALIZAR ↻"
-    );
-
-    actualizarOrganizador.type = "button";
-    actualizarOrganizador.addEventListener(
-        "click",
-        actualizarTodo
-    );
-
-    barra.append(subtitulo, actualizarOrganizador);
-
-    const listaOrganizador = crearElemento(
-        "div",
-        "lista-organizador"
-    );
-
-    listaOrganizador.id = "listaOrganizador";
-    listaOrganizador.setAttribute("aria-live", "polite");
-
-    contenedorOrganizador.append(
-        encabezadoOrganizador,
-        resumen,
-        barra,
-        listaOrganizador
-    );
-
-    seccionOrganizador.appendChild(
-        contenedorOrganizador
-    );
-
-    seccionJugador.insertAdjacentElement(
-        "afterend",
-        seccionOrganizador
-    );
-
-    crearEnlaceMenu(
-        "Mis postulaciones",
-        "#mis-postulaciones"
-    );
-
-    crearEnlaceMenu(
-        "Organizador",
-        "#organizador"
-    );
-}
-
-function crearTarjetaPostulacion(postulacion) {
-    const tarjeta = crearElemento(
-        "article",
-        "postulacion-card"
-    );
-
-    const cabecera = crearElemento(
-        "div",
-        "postulacion-cabecera"
-    );
-
-    const informacion = crearElemento("div");
-
-    informacion.append(
-        crearElemento(
-            "span",
-            "postulacion-id",
-            "SOLICITUD #" + postulacion.id
-        ),
-        crearElemento(
-            "h3",
-            "postulacion-juego",
-            nombreJuego(postulacion.juego)
-        )
-    );
-
-    cabecera.append(
-        informacion,
-        crearEstado(postulacion.estado, "postulacion-estado")
-    );
-
-    const detalles = crearElemento(
-        "div",
-        "postulacion-detalles"
-    );
-
-    detalles.append(
-        crearDetalle("Partida", "#" + postulacion.scrimId),
-        crearDetalle("Formato", postulacion.formato),
-        crearDetalle("Región", postulacion.region),
-        crearDetalle("Fecha", formatearFecha(postulacion.fecha))
-    );
-
-    let mensaje;
-
-    switch (postulacion.estado) {
-        case "Aceptada":
-            mensaje = "Tu postulación fue aceptada.";
-            break;
-        case "Rechazada":
-            mensaje = "Tu postulación fue rechazada.";
-            break;
-        default:
-            mensaje = "Esperando la aprobación del organizador.";
-    }
-
-    tarjeta.append(
-        cabecera,
-        detalles,
-        crearElemento(
-            "p",
-            "postulacion-mensaje",
-            mensaje
-        )
-    );
-
-    return tarjeta;
-}
-
-function mostrarPostulaciones() {
-    const lista = document.getElementById(
-        "listaPostulaciones"
-    );
-
-    const contadorJugador = document.getElementById(
-        "contadorPostulaciones"
-    );
-
-    contadorJugador.textContent =
-        misPostulaciones.length + " solicitudes";
-
-    if (misPostulaciones.length === 0) {
-        lista.replaceChildren(
-            crearElemento(
-                "div",
-                "message-card",
-                "Todavía no tenés postulaciones registradas."
-            )
-        );
-        return;
-    }
-
-    lista.replaceChildren(
-        ...misPostulaciones.map(crearTarjetaPostulacion)
-    );
-}
-
-function crearResumen(numero, texto) {
-    const tarjeta = crearElemento(
-        "div",
-        "organizador-resumen-item"
-    );
-
-    tarjeta.append(
-        crearElemento(
-            "strong",
-            "",
-            String(numero)
-        ),
-        crearElemento(
-            "span",
-            "",
-            texto
-        )
-    );
-
-    return tarjeta;
-}
-
-function mostrarResumenOrganizador() {
-    const pendientes = postulacionesOrganizador.filter(
-        p => p.estado === "Pendiente"
-    ).length;
-
-    const aceptadas = postulacionesOrganizador.filter(
-        p => p.estado === "Aceptada"
-    ).length;
-
-    const rechazadas = postulacionesOrganizador.filter(
-        p => p.estado === "Rechazada"
-    ).length;
-
-    document.getElementById(
-        "resumenOrganizador"
-    ).replaceChildren(
-        crearResumen(pendientes, "Pendientes"),
-        crearResumen(aceptadas, "Aceptadas"),
-        crearResumen(rechazadas, "Rechazadas")
-    );
-}
-
-async function gestionarPostulacion(postulacion, accion) {
-    if (procesandoSolicitud || postulacion.estado !== "Pendiente") {
-        return;
-    }
-
-    procesandoSolicitud = true;
-    mostrarOrganizador();
+async function solicitar(ruta, opciones = {}) {
+    const respuesta = await fetch(ruta, {
+        cache: "no-store",
+        credentials: "same-origin",
+        ...opciones
+    });
+
+    let datos;
 
     try {
-        const parametros = new URLSearchParams();
-
-        parametros.set(
-            "postulacionId",
-            String(postulacion.id)
+        datos = await respuesta.json();
+    } catch {
+        throw new Error(
+            "Respuesta inesperada del servidor"
         );
-
-        parametros.set("accion", accion);
-
-        const respuesta = await fetch(
-            "/api/organizador/postulaciones",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type":
-                        "application/x-www-form-urlencoded"
-                },
-                body: parametros.toString()
-            }
-        );
-
-        const datos = await respuesta.json();
-
-        if (!respuesta.ok) {
-            throw new Error(
-                datos.error || "No se pudo procesar la solicitud"
-            );
-        }
-
-        mostrarNotificacion(
-            accion === "aceptar"
-                ? "¡Jugador aceptado!"
-                : "Solicitud rechazada",
-            "La solicitud #" + postulacion.id +
-            " ahora está " + datos.estado.toLowerCase() + "."
-        );
-
-        await actualizarTodo();
-
-    } catch (error) {
-        mostrarNotificacion(
-            "No se pudo completar la acción",
-            error.message,
-            "error"
-        );
-
-    } finally {
-        procesandoSolicitud = false;
-        mostrarOrganizador();
     }
+
+    if (!respuesta.ok) {
+        throw new Error(
+            datos.error || "Error HTTP " + respuesta.status
+        );
+    }
+
+    return datos;
 }
 
-function crearTarjetaOrganizador(postulacion) {
-    const tarjeta = crearElemento(
-        "article",
-        "organizador-card"
+async function enviarFormulario(ruta, datos) {
+    return solicitar(ruta, {
+        method: "POST",
+        headers: {
+            "Content-Type":
+                "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams(datos).toString()
+    });
+}
+
+function crearCampo(nombre, etiqueta, tipo, requerido = true) {
+    const contenedor = crearElemento(
+        "div", "filter-field"
     );
 
-    const cabecera = crearElemento(
-        "div",
-        "organizador-card-cabecera"
+    const label = crearElemento("label", "", etiqueta);
+
+    const entrada = document.createElement("input");
+    entrada.name = nombre;
+    entrada.type = tipo;
+    entrada.required = requerido;
+
+    if (tipo === "password") {
+        entrada.minLength = 8;
+    }
+
+    contenedor.append(label, entrada);
+
+    return contenedor;
+}
+
+function crearSeleccion(nombre, etiqueta, opciones) {
+    const contenedor = crearElemento(
+        "div", "filter-field"
     );
 
-    const informacion = crearElemento("div");
+    const label = crearElemento("label", "", etiqueta);
+    const select = document.createElement("select");
 
-    informacion.append(
+    select.name = nombre;
+    select.required = true;
+
+    opciones.forEach(opcion => {
+        select.add(
+            new Option(opcion.texto, opcion.valor)
+        );
+    });
+
+    contenedor.append(label, select);
+
+    return contenedor;
+}
+
+function crearSeccion(id, clase, titulo, descripcion) {
+    const seccion = crearElemento("section", clase);
+    seccion.id = id;
+
+    const contenedor = crearElemento("div", "container");
+
+    contenedor.append(
         crearElemento(
-            "span",
-            "postulacion-id",
-            "SOLICITUD #" + postulacion.id
+            "span", "section-eyebrow", "// eScrims"
         ),
+        crearElemento(
+            "h2", "mis-postulaciones-titulo", titulo
+        ),
+        crearElemento(
+            "p", "section-description", descripcion
+        )
+    );
+
+    seccion.append(contenedor);
+
+    return { seccion, contenedor };
+}
+
+function crearFormularioLogin() {
+    const formulario = crearElemento(
+        "form", "organizador-card"
+    );
+
+    formulario.append(
+        crearElemento(
+            "h3", "organizador-juego", "INICIAR SESIÓN"
+        ),
+        crearCampo("email", "Email", "email"),
+        crearCampo("password", "Contraseña", "password")
+    );
+
+    const boton = crearElemento(
+        "button", "postular-button", "INGRESAR →"
+    );
+
+    boton.type = "submit";
+    formulario.append(boton);
+
+    formulario.addEventListener("submit", async evento => {
+        evento.preventDefault();
+
+        if (procesando) {
+            return;
+        }
+
+        procesando = true;
+        boton.disabled = true;
+
+        try {
+            const datos = Object.fromEntries(
+                new FormData(formulario)
+            );
+
+            await enviarFormulario(
+                "/api/auth/login", datos
+            );
+
+            await recuperarSesion();
+
+            notificar(
+                "¡Sesión iniciada!",
+                "Ya podés utilizar tu cuenta de eScrims."
+            );
+
+        } catch (error) {
+            notificar(
+                "No se pudo ingresar",
+                error.message,
+                "error"
+            );
+
+        } finally {
+            procesando = false;
+            boton.disabled = false;
+        }
+    });
+
+    return formulario;
+}
+
+function crearFormularioRegistro() {
+    const formulario = crearElemento(
+        "form", "organizador-card"
+    );
+
+    formulario.append(
+        crearElemento(
+            "h3", "organizador-juego", "CREAR CUENTA"
+        ),
+        crearCampo("username", "Nombre de usuario", "text"),
+        crearCampo("email", "Email", "email"),
+        crearCampo("password", "Contraseña", "password"),
+        crearSeleccion("region", "Región", [
+            { texto: "LAS", valor: "LAS" },
+            { texto: "LAN", valor: "LAN" },
+            { texto: "BR", valor: "BR" }
+        ])
+    );
+
+    const rangos = [];
+
+    for (let i = 1; i <= 10; i++) {
+        rangos.push({
+            texto: "Rango " + i,
+            valor: String(i)
+        });
+    }
+
+    formulario.append(
+        crearSeleccion("rango", "Rango", rangos)
+    );
+
+    const boton = crearElemento(
+        "button", "postular-button", "REGISTRARME →"
+    );
+
+    boton.type = "submit";
+    formulario.append(boton);
+
+    formulario.addEventListener("submit", async evento => {
+        evento.preventDefault();
+
+        if (procesando) {
+            return;
+        }
+
+        procesando = true;
+        boton.disabled = true;
+
+        try {
+            const datos = Object.fromEntries(
+                new FormData(formulario)
+            );
+
+            await enviarFormulario(
+                "/api/auth/register", datos
+            );
+
+            await recuperarSesion();
+
+            notificar(
+                "¡Cuenta creada!",
+                "Tu usuario ya puede postularse a partidas."
+            );
+
+        } catch (error) {
+            notificar(
+                "No se pudo registrar",
+                error.message,
+                "error"
+            );
+
+        } finally {
+            procesando = false;
+            boton.disabled = false;
+        }
+    });
+
+    return formulario;
+}
+
+function crearPantallaAcceso() {
+    const { seccion, contenedor } = crearSeccion(
+        "cuenta",
+        "mis-postulaciones-section",
+        "TU CUENTA",
+        "Ingresá para postularte y seguir tus solicitudes."
+    );
+
+    const contenido = crearElemento(
+        "div", "lista-postulaciones"
+    );
+
+    contenido.id = "contenidoCuenta";
+
+    contenedor.append(contenido);
+
+    document.getElementById("partidas")
+        .insertAdjacentElement("afterend", seccion);
+
+    const navegacion = document.querySelector(".navigation");
+
+    const enlace = crearElemento(
+        "a", "nav-link", "Mi cuenta"
+    );
+
+    enlace.href = "#cuenta";
+    navegacion.append(enlace);
+
+    mostrarCuenta();
+}
+
+function mostrarCuenta() {
+    const contenedor = document.getElementById(
+        "contenidoCuenta"
+    );
+
+    if (!usuarioActual) {
+        contenedor.replaceChildren(
+            crearFormularioLogin(),
+            crearFormularioRegistro()
+        );
+
+        return;
+    }
+
+    const tarjeta = crearElemento(
+        "div", "organizador-card"
+    );
+
+    tarjeta.append(
         crearElemento(
             "h3",
             "organizador-juego",
-            nombreJuego(postulacion.juego)
+            usuarioActual.username
         ),
         crearElemento(
             "p",
             "organizador-jugador",
-            postulacion.usuario + " · SCRIM #" +
-            postulacion.scrimId
+            "REGIÓN: " + usuarioActual.region +
+            " · ROL: " + usuarioActual.rol
         )
     );
 
-    cabecera.append(
-        informacion,
-        crearEstado(
-            postulacion.estado,
-            "postulacion-estado"
-        )
+    const salir = crearElemento(
+        "button",
+        "actualizar-postulaciones",
+        "CERRAR SESIÓN"
     );
 
-    const detalles = crearElemento(
-        "div",
-        "organizador-card-detalles"
-    );
+    salir.type = "button";
 
-    detalles.append(
-        crearDetalle("Formato", postulacion.formato),
-        crearDetalle("Región", postulacion.region),
-        crearDetalle("Fecha", formatearFecha(postulacion.fecha))
-    );
+    salir.addEventListener("click", async () => {
+        try {
+            await enviarFormulario(
+                "/api/auth/logout", {}
+            );
 
-    tarjeta.append(cabecera, detalles);
+            await recuperarSesion();
 
-    if (postulacion.estado === "Pendiente") {
-        const acciones = crearElemento(
-            "div",
-            "organizador-card-acciones"
-        );
+            notificar(
+                "Sesión cerrada",
+                "Hasta la próxima."
+            );
 
-        const aceptar = crearElemento(
-            "button",
-            "organizador-aceptar",
-            "✓ ACEPTAR"
-        );
-
-        const rechazar = crearElemento(
-            "button",
-            "organizador-rechazar",
-            "× RECHAZAR"
-        );
-
-        aceptar.type = "button";
-        rechazar.type = "button";
-
-        aceptar.disabled = procesandoSolicitud;
-        rechazar.disabled = procesandoSolicitud;
-
-        aceptar.addEventListener("click", () => {
-            gestionarPostulacion(postulacion, "aceptar");
-        });
-
-        rechazar.addEventListener("click", () => {
-            gestionarPostulacion(postulacion, "rechazar");
-        });
-
-        acciones.append(aceptar, rechazar);
-        tarjeta.appendChild(acciones);
-
-    } else {
-        tarjeta.append(
-            crearElemento(
-                "p",
-                "organizador-resuelto",
-                "Solicitud " +
-                postulacion.estado.toLowerCase() +
-                ". No hay acciones pendientes."
-            )
-        );
-    }
-
-    return tarjeta;
-}
-
-function mostrarOrganizador() {
-    const lista = document.getElementById(
-        "listaOrganizador"
-    );
-
-    mostrarResumenOrganizador();
-
-    if (postulacionesOrganizador.length === 0) {
-        lista.replaceChildren(
-            crearElemento(
-                "div",
-                "message-card",
-                "Todavía no hay solicitudes para revisar."
-            )
-        );
-        return;
-    }
-
-    const ordenadas = [...postulacionesOrganizador].sort(
-        (a, b) => {
-            if (a.estado === "Pendiente" &&
-                b.estado !== "Pendiente") {
-                return -1;
-            }
-
-            if (b.estado === "Pendiente" &&
-                a.estado !== "Pendiente") {
-                return 1;
-            }
-
-            return a.id - b.id;
-        }
-    );
-
-    lista.replaceChildren(
-        ...ordenadas.map(crearTarjetaOrganizador)
-    );
-}
-
-async function enviarPostulacion(scrim, boton) {
-    if (postulacionesEnProceso.has(scrim.id)) {
-        return;
-    }
-
-    postulacionesEnProceso.add(scrim.id);
-    boton.disabled = true;
-    boton.textContent = "ENVIANDO...";
-
-    try {
-        const parametros = new URLSearchParams();
-        parametros.set("scrimId", String(scrim.id));
-
-        const respuesta = await fetch(
-            "/api/postulaciones",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type":
-                        "application/x-www-form-urlencoded"
-                },
-                body: parametros.toString()
-            }
-        );
-
-        const datos = await respuesta.json();
-
-        if (!respuesta.ok) {
-            throw new Error(
-                datos.error || "No se pudo registrar la postulación"
+        } catch (error) {
+            notificar(
+                "Error",
+                error.message,
+                "error"
             );
         }
+    });
 
-        mostrarNotificacion(
-            "¡Postulación enviada!",
-            "Tu solicitud para " + nombreJuego(scrim.juego) +
-            " quedó pendiente de aceptación."
-        );
+    tarjeta.append(salir);
 
-        await actualizarTodo();
+    contenedor.replaceChildren(tarjeta);
+}
 
-    } catch (error) {
-        mostrarNotificacion(
-            "No se pudo enviar",
-            error.message,
-            "error"
-        );
+function crearPantallaPostulaciones() {
+    const { seccion, contenedor } = crearSeccion(
+        "mis-postulaciones",
+        "mis-postulaciones-section",
+        "MIS POSTULACIONES",
+        "Consultá el estado de tus solicitudes."
+    );
 
-    } finally {
-        postulacionesEnProceso.delete(scrim.id);
-        mostrarScrims();
-    }
+    const lista = crearElemento(
+        "div", "lista-postulaciones"
+    );
+
+    lista.id = "listaPostulaciones";
+
+    contenedor.append(lista);
+
+    document.getElementById("cuenta")
+        .insertAdjacentElement("afterend", seccion);
+
+    const enlace = crearElemento(
+        "a", "nav-link", "Mis postulaciones"
+    );
+
+    enlace.href = "#mis-postulaciones";
+
+    document.querySelector(".navigation").append(enlace);
+}
+
+function crearPantallaOrganizador() {
+    const { seccion, contenedor } = crearSeccion(
+        "organizador",
+        "organizador-section",
+        "PANEL DEL ORGANIZADOR",
+        "Administrá las solicitudes de los jugadores."
+    );
+
+    const resumen = crearElemento(
+        "div", "organizador-resumen"
+    );
+
+    resumen.id = "resumenOrganizador";
+
+    const lista = crearElemento(
+        "div", "lista-organizador"
+    );
+
+    lista.id = "listaOrganizador";
+
+    contenedor.append(resumen, lista);
+
+    document.getElementById("mis-postulaciones")
+        .insertAdjacentElement("afterend", seccion);
+
+    const enlace = crearElemento(
+        "a", "nav-link", "Organizador"
+    );
+
+    enlace.id = "enlaceOrganizador";
+    enlace.href = "#organizador";
+
+    document.querySelector(".navigation").append(enlace);
+
+    seccion.hidden = true;
+    enlace.hidden = true;
+}
+
+function mostrarAccesos() {
+    const esOrganizador = usuarioActual &&
+        usuarioActual.rol === "ORGANIZADOR";
+
+    document.getElementById("organizador").hidden =
+        !esOrganizador;
+
+    document.getElementById(
+        "enlaceOrganizador"
+    ).hidden = !esOrganizador;
+
+    mostrarCuenta();
+}
+
+async function recuperarSesion() {
+    const datos = await solicitar("/api/auth/me");
+
+    usuarioActual = datos.autenticado ? datos : null;
+
+    mostrarAccesos();
+
+    await actualizarTodo();
 }
 
 function crearTarjeta(scrim) {
     const tarjeta = crearElemento(
-        "article",
-        "scrim-card"
+        "article", "scrim-card"
     );
 
     const superior = crearElemento("div", "card-top");
 
-    const icono = crearElemento(
-        "div",
-        "game-icon",
-        iconosJuegos[scrim.juego] || "ES"
+    superior.append(
+        crearElemento(
+            "div", "game-icon",
+            iconosJuegos[scrim.juego] || "ES"
+        ),
+        crearElemento(
+            "span",
+            scrim.estado === "Buscando jugadores"
+                ? "status"
+                : "status other",
+            scrim.estado === "Buscando jugadores"
+                ? "BUSCANDO"
+                : scrim.estado.toUpperCase()
+        )
     );
-
-    const buscando =
-        scrim.estado === "Buscando jugadores";
-
-    const estado = crearElemento(
-        "span",
-        buscando ? "status" : "status other",
-        buscando
-            ? "BUSCANDO"
-            : scrim.estado.toUpperCase()
-    );
-
-    superior.append(icono, estado);
 
     const titulo = crearElemento(
-        "h4",
-        "",
-        nombreJuego(scrim.juego)
+        "h4", "", nombreJuego(scrim.juego)
     );
 
     const subtitulo = crearElemento(
-        "p",
-        "card-subtitle",
+        "p", "card-subtitle",
         "Partida competitiva · " + scrim.formato
     );
 
     const detalles = crearElemento(
-        "div",
-        "card-details"
+        "div", "card-details"
     );
 
     detalles.append(
-        crearDetalle("Región", scrim.region),
-        crearDetalle("Formato", scrim.formato),
-        crearDetalle("Fecha", formatearFecha(scrim.fecha))
+        detalle("Región", scrim.region),
+        detalle("Formato", scrim.formato),
+        detalle("Fecha", formatearFecha(scrim.fecha))
     );
 
     const inferior = crearElemento(
-        "div",
-        "card-bottom"
+        "div", "card-bottom"
     );
 
     const acciones = crearElemento("div", "cupos");
 
-    const cantidadCupos = crearElemento(
-        "span",
-        "cupos-texto",
-        scrim.cuposDisponibles + " cupos disponibles"
+    acciones.append(
+        crearElemento(
+            "span", "cupos-texto",
+            scrim.cuposDisponibles + " cupos disponibles"
+        )
     );
 
     const boton = crearElemento(
-        "button",
-        "postular-button",
-        "POSTULARME →"
+        "button", "postular-button", "POSTULARME →"
     );
 
     boton.type = "button";
@@ -852,128 +650,108 @@ function crearTarjeta(scrim) {
         p => p.scrimId === scrim.id
     );
 
-    const disponible =
-        buscando && scrim.cuposDisponibles > 0;
+    if (!usuarioActual) {
+        boton.textContent = "INICIAR SESIÓN →";
 
-    if (!postulacionesCargadas) {
+        boton.addEventListener("click", () => {
+            location.hash = "#cuenta";
+        });
+
+    } else if (usuarioActual.rol !== "JUGADOR") {
         boton.disabled = true;
-        boton.textContent = "CARGANDO...";
+        boton.textContent = "SOLO JUGADORES";
 
     } else if (postulacion) {
         boton.disabled = true;
         boton.classList.add("enviado");
 
-        boton.textContent =
-            postulacion.estado === "Pendiente"
-                ? "POSTULACIÓN ENVIADA"
-                : "SOLICITUD " +
-                postulacion.estado.toUpperCase();
+        boton.textContent = postulacion.estado === "Pendiente"
+            ? "POSTULACIÓN ENVIADA"
+            : "SOLICITUD " + postulacion.estado.toUpperCase();
 
-    } else if (!disponible) {
+    } else if (
+        scrim.estado !== "Buscando jugadores" ||
+        scrim.cuposDisponibles <= 0
+    ) {
         boton.disabled = true;
         boton.textContent = "NO DISPONIBLE";
 
-    } else if (postulacionesEnProceso.has(scrim.id)) {
-        boton.disabled = true;
-        boton.textContent = "ENVIANDO...";
-
     } else {
-        boton.addEventListener("click", () => {
-            enviarPostulacion(scrim, boton);
+        boton.addEventListener("click", async () => {
+            boton.disabled = true;
+            boton.textContent = "ENVIANDO...";
+
+            try {
+                await enviarFormulario(
+                    "/api/postulaciones",
+                    { scrimId: scrim.id }
+                );
+
+                notificar(
+                    "¡Postulación enviada!",
+                    "Tu solicitud quedó pendiente."
+                );
+
+                await actualizarTodo();
+
+            } catch (error) {
+                notificar(
+                    "No se pudo postular",
+                    error.message,
+                    "error"
+                );
+
+                boton.disabled = false;
+                boton.textContent = "POSTULARME →";
+            }
         });
     }
 
-    acciones.append(cantidadCupos, boton);
+    acciones.append(boton);
 
-    const identificador = crearElemento(
-        "span",
-        "card-id",
-        "SCRIM #" + scrim.id
+    inferior.append(
+        acciones,
+        crearElemento(
+            "span", "card-id",
+            "SCRIM #" + scrim.id
+        )
     );
 
-    inferior.append(acciones, identificador);
-
     tarjeta.append(
-        superior,
-        titulo,
-        subtitulo,
-        detalles,
-        inferior
+        superior, titulo, subtitulo,
+        detalles, inferior
     );
 
     return tarjeta;
 }
 
-function actualizarFiltros() {
-    const juegos = [
-        ...new Set(scrims.map(scrim => scrim.juego))
-    ].sort();
-
-    const regiones = [
-        ...new Set(scrims.map(scrim => scrim.region))
-    ].sort();
-
-    const juegoAnterior = filtroJuego.value;
-    const regionAnterior = filtroRegion.value;
-
-    filtroJuego.replaceChildren(
-        new Option("Todos los juegos", "")
-    );
-
-    filtroRegion.replaceChildren(
-        new Option("Todas las regiones", "")
-    );
-
-    juegos.forEach(juego => {
-        filtroJuego.add(
-            new Option(nombreJuego(juego), juego)
-        );
-    });
-
-    regiones.forEach(region => {
-        filtroRegion.add(new Option(region, region));
-    });
-
-    filtroJuego.value = juegoAnterior;
-    filtroRegion.value = regionAnterior;
-}
-
 function mostrarScrims() {
     const texto = busqueda.value.trim().toLowerCase();
-    const juego = filtroJuego.value;
-    const region = filtroRegion.value;
 
     const filtrados = scrims.filter(scrim => {
-        const nombre = nombreJuego(scrim.juego);
-
-        const coincideTexto =
-            nombre.toLowerCase().includes(texto) ||
-            scrim.juego.toLowerCase().includes(texto);
+        const coincideTexto = nombreJuego(scrim.juego)
+            .toLowerCase().includes(texto);
 
         const coincideJuego =
-            !juego || scrim.juego === juego;
+            !filtroJuego.value ||
+            filtroJuego.value === scrim.juego;
 
         const coincideRegion =
-            !region || scrim.region === region;
+            !filtroRegion.value ||
+            filtroRegion.value === scrim.region;
 
-        return (
-            coincideTexto &&
+        return coincideTexto &&
             coincideJuego &&
-            coincideRegion
-        );
+            coincideRegion;
     });
 
-    contador.textContent =
-        filtrados.length + " partidas";
-
-    estadoCarga.textContent =
-        "Datos del servidor eScrims";
+    contador.textContent = filtrados.length + " partidas";
+    estadoCarga.textContent = "Datos del servidor eScrims";
 
     if (filtrados.length === 0) {
         listaScrims.replaceChildren(
             crearElemento(
-                "div",
-                "message-card",
+                "div", "message-card",
                 "No encontramos partidas con esos filtros."
             )
         );
@@ -985,42 +763,298 @@ function mostrarScrims() {
     );
 }
 
-async function obtenerJson(ruta) {
-    const respuesta = await fetch(ruta, {
-        method: "GET",
-        cache: "no-store"
-    });
+function actualizarFiltros() {
+    const juegoAnterior = filtroJuego.value;
+    const regionAnterior = filtroRegion.value;
 
-    if (!respuesta.ok) {
-        throw new Error(
-            "Error HTTP " + respuesta.status +
-            " al consultar " + ruta
+    filtroJuego.replaceChildren(
+        new Option("Todos los juegos", "")
+    );
+
+    filtroRegion.replaceChildren(
+        new Option("Todas las regiones", "")
+    );
+
+    [...new Set(scrims.map(s => s.juego))]
+        .sort()
+        .forEach(juego => {
+            filtroJuego.add(
+                new Option(nombreJuego(juego), juego)
+            );
+        });
+
+    [...new Set(scrims.map(s => s.region))]
+        .sort()
+        .forEach(region => {
+            filtroRegion.add(
+                new Option(region, region)
+            );
+        });
+
+    filtroJuego.value = juegoAnterior;
+    filtroRegion.value = regionAnterior;
+}
+
+function mostrarPostulaciones() {
+    const lista = document.getElementById(
+        "listaPostulaciones"
+    );
+
+    if (!usuarioActual) {
+        lista.replaceChildren(
+            crearElemento(
+                "div", "message-card",
+                "Iniciá sesión para consultar tus postulaciones."
+            )
         );
+        return;
     }
 
-    const datos = await respuesta.json();
-
-    if (!Array.isArray(datos)) {
-        throw new Error(
-            "Respuesta inesperada del servidor"
+    if (misPostulaciones.length === 0) {
+        lista.replaceChildren(
+            crearElemento(
+                "div", "message-card",
+                "Todavía no tenés postulaciones."
+            )
         );
+        return;
     }
 
-    return datos;
+    lista.replaceChildren(
+        ...misPostulaciones.map(p => {
+            const tarjeta = crearElemento(
+                "article", "postulacion-card"
+            );
+
+            const cabecera = crearElemento(
+                "div", "postulacion-cabecera"
+            );
+
+            const informacion = crearElemento("div");
+
+            informacion.append(
+                crearElemento(
+                    "span", "postulacion-id",
+                    "SOLICITUD #" + p.id
+                ),
+                crearElemento(
+                    "h3", "postulacion-juego",
+                    nombreJuego(p.juego)
+                )
+            );
+
+            cabecera.append(
+                informacion,
+                estadoEtiqueta(p.estado)
+            );
+
+            const detalles = crearElemento(
+                "div", "postulacion-detalles"
+            );
+
+            detalles.append(
+                detalle("Partida", "#" + p.scrimId),
+                detalle("Formato", p.formato),
+                detalle("Región", p.region),
+                detalle("Fecha", formatearFecha(p.fecha))
+            );
+
+            tarjeta.append(
+                cabecera,
+                detalles,
+                crearElemento(
+                    "p", "postulacion-mensaje",
+                    p.estado === "Pendiente"
+                        ? "Esperando aprobación del organizador."
+                        : "Solicitud " +
+                        p.estado.toLowerCase() + "."
+                )
+            );
+
+            return tarjeta;
+        })
+    );
+}
+
+function resumenOrganizador() {
+    const contenedor = document.getElementById(
+        "resumenOrganizador"
+    );
+
+    const estados = [
+        "Pendiente",
+        "Aceptada",
+        "Rechazada"
+    ];
+
+    contenedor.replaceChildren(
+        ...estados.map(estado => {
+            const tarjeta = crearElemento(
+                "div", "organizador-resumen-item"
+            );
+
+            const cantidad = postulacionesOrganizador.filter(
+                p => p.estado === estado
+            ).length;
+
+            tarjeta.append(
+                crearElemento(
+                    "strong", "", String(cantidad)
+                ),
+                crearElemento(
+                    "span", "", estado + "s"
+                )
+            );
+
+            return tarjeta;
+        })
+    );
+}
+
+function mostrarOrganizador() {
+    const lista = document.getElementById(
+        "listaOrganizador"
+    );
+
+    resumenOrganizador();
+
+    if (postulacionesOrganizador.length === 0) {
+        lista.replaceChildren(
+            crearElemento(
+                "div", "message-card",
+                "No hay solicitudes para revisar."
+            )
+        );
+        return;
+    }
+
+    lista.replaceChildren(
+        ...postulacionesOrganizador.map(p => {
+            const tarjeta = crearElemento(
+                "article", "organizador-card"
+            );
+
+            const cabecera = crearElemento(
+                "div", "organizador-card-cabecera"
+            );
+
+            const informacion = crearElemento("div");
+
+            informacion.append(
+                crearElemento(
+                    "span", "postulacion-id",
+                    "SOLICITUD #" + p.id
+                ),
+                crearElemento(
+                    "h3", "organizador-juego",
+                    nombreJuego(p.juego)
+                ),
+                crearElemento(
+                    "p", "organizador-jugador",
+                    p.usuario + " · SCRIM #" + p.scrimId
+                )
+            );
+
+            cabecera.append(
+                informacion,
+                estadoEtiqueta(p.estado)
+            );
+
+            const detalles = crearElemento(
+                "div", "organizador-card-detalles"
+            );
+
+            detalles.append(
+                detalle("Formato", p.formato),
+                detalle("Región", p.region),
+                detalle("Fecha", formatearFecha(p.fecha))
+            );
+
+            tarjeta.append(cabecera, detalles);
+
+            if (p.estado === "Pendiente") {
+                const acciones = crearElemento(
+                    "div", "organizador-card-acciones"
+                );
+
+                for (const accion of ["aceptar", "rechazar"]) {
+                    const boton = crearElemento(
+                        "button",
+                        "organizador-" + accion,
+                        accion.toUpperCase()
+                    );
+
+                    boton.type = "button";
+
+                    boton.addEventListener(
+                        "click", async () => {
+                            if (procesando) {
+                                return;
+                            }
+
+                            procesando = true;
+                            boton.disabled = true;
+
+                            try {
+                                await enviarFormulario(
+                                    "/api/organizador/postulaciones",
+                                    {
+                                        postulacionId: p.id,
+                                        accion
+                                    }
+                                );
+
+                                notificar(
+                                    "Solicitud procesada",
+                                    "El estado fue actualizado."
+                                );
+
+                                await actualizarTodo();
+
+                            } catch (error) {
+                                notificar(
+                                    "Error",
+                                    error.message,
+                                    "error"
+                                );
+
+                            } finally {
+                                procesando = false;
+                                boton.disabled = false;
+                            }
+                        }
+                    );
+
+                    acciones.append(boton);
+                }
+
+                tarjeta.append(acciones);
+            }
+
+            lista.append(tarjeta);
+            return tarjeta;
+        })
+    );
 }
 
 async function actualizarTodo() {
     try {
-        const datos = await Promise.all([
-            obtenerJson("/api/scrims"),
-            obtenerJson("/api/postulaciones"),
-            obtenerJson("/api/organizador/postulaciones")
-        ]);
+        scrims = await solicitar("/api/scrims");
 
-        scrims = datos[0];
-        misPostulaciones = datos[1];
-        postulacionesOrganizador = datos[2];
-        postulacionesCargadas = true;
+        misPostulaciones = [];
+        postulacionesOrganizador = [];
+
+        if (usuarioActual) {
+            misPostulaciones = await solicitar(
+                "/api/postulaciones"
+            );
+
+            if (usuarioActual.rol === "ORGANIZADOR") {
+                postulacionesOrganizador = await solicitar(
+                    "/api/organizador/postulaciones"
+                );
+            }
+        }
 
         actualizarFiltros();
         mostrarScrims();
@@ -1028,49 +1062,12 @@ async function actualizarTodo() {
         mostrarOrganizador();
 
     } catch (error) {
-        console.error(
-            "Error al actualizar eScrims:",
-            error
-        );
+        console.error(error);
 
-        postulacionesCargadas = false;
-
-        mostrarNotificacion(
+        notificar(
             "Error de conexión",
-            "No se pudieron actualizar los datos. " +
-            "Comprobá que Java esté ejecutándose.",
+            error.message,
             "error"
-        );
-
-        estadoCarga.textContent =
-            "Error de conexión";
-
-        listaScrims.replaceChildren(
-            crearElemento(
-                "div",
-                "message-card",
-                "No se pudieron cargar las partidas."
-            )
-        );
-
-        document.getElementById(
-            "listaPostulaciones"
-        ).replaceChildren(
-            crearElemento(
-                "div",
-                "message-card",
-                "No se pudieron cargar las postulaciones."
-            )
-        );
-
-        document.getElementById(
-            "listaOrganizador"
-        ).replaceChildren(
-            crearElemento(
-                "div",
-                "message-card",
-                "No se pudieron cargar las solicitudes."
-            )
         );
     }
 }
@@ -1083,9 +1080,25 @@ limpiarFiltros.addEventListener("click", () => {
     busqueda.value = "";
     filtroJuego.value = "";
     filtroRegion.value = "";
-
     mostrarScrims();
 });
 
-crearSecciones();
-actualizarTodo();
+async function iniciarAplicacion() {
+    crearPantallaAcceso();
+    crearPantallaPostulaciones();
+    crearPantallaOrganizador();
+
+    try {
+        await recuperarSesion();
+    } catch (error) {
+        console.error(error);
+
+        notificar(
+            "No se pudo conectar",
+            "Comprobá que el servidor Java esté funcionando.",
+            "error"
+        );
+    }
+}
+
+iniciarAplicacion();

@@ -8,6 +8,7 @@ import domain.Scrim;
 import domain.Usuario;
 import service.PostulacionService;
 import service.ScrimService;
+import service.WebAuthService;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -26,44 +27,39 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class ServidorWeb {
 
-    private final ScrimService scrimService;
-    private final PostulacionService postulacionService;
-    private final HttpServer servidor;
-    private final int puerto;
+    private record Registro(
+            Postulacion postulacion,
+            Scrim scrim,
+            Usuario usuario
+    ) {}
 
-    private final Usuario jugadorDemo;
+    private final ScrimService scrimService = new ScrimService();
+    private final PostulacionService postulacionService =
+            new PostulacionService();
 
-    private final AtomicInteger siguientePostulacionId =
-            new AtomicInteger(1);
+    private final WebAuthService auth = new WebAuthService();
 
-    private final Map<Integer, RegistroPostulacion> registros =
+    private final Map<Integer, Registro> registros =
             new ConcurrentHashMap<>();
+
+    private final AtomicInteger siguientePostulacion =
+            new AtomicInteger(1);
 
     private final Path carpetaWeb = Path.of("src", "web");
 
-    private record RegistroPostulacion(
-            Postulacion postulacion,
-            Scrim scrim
-    ) {}
+    private final HttpServer servidor;
+    private final int puerto;
 
     public ServidorWeb(int puerto) throws IOException {
-
         this.puerto = puerto;
 
-        scrimService = new ScrimService();
-        postulacionService = new PostulacionService();
-
-        jugadorDemo = new Usuario(
-                1000,
-                "JugadorDemo",
-                "demo@escrims.com",
-                "demo",
-                "LAS",
-                5
+        servidor = HttpServer.create(
+                new InetSocketAddress("127.0.0.1", puerto),
+                0
         );
 
-        servidor = HttpServer.create(
-                new InetSocketAddress("127.0.0.1", puerto), 0
+        servidor.createContext(
+                "/api/auth", this::manejarAuth
         );
 
         servidor.createContext(
@@ -77,17 +73,17 @@ public class ServidorWeb {
         );
 
         servidor.createContext(
-                "/api/scrims",
-                this::listarScrims
+                "/api/scrims", this::listarScrims
         );
 
-        servidor.createContext("/", this::servirPagina);
+        servidor.createContext(
+                "/", this::servirPagina
+        );
 
         cargarDatosIniciales();
     }
 
     private void cargarDatosIniciales() {
-
         scrimService.agregarScrim(new Scrim(
                 1, "Valorant", "5v5", "LAS",
                 3, 7, 80,
@@ -110,251 +106,399 @@ public class ServidorWeb {
         ));
     }
 
-    private void manejarPostulaciones(
-            HttpExchange exchange
-    ) throws IOException {
+    private void manejarAuth(HttpExchange ex)
+            throws IOException {
 
-        if (!exchange.getRequestURI().getPath()
-                .equals("/api/postulaciones")) {
+        String ruta = ex.getRequestURI().getPath();
+        String metodo = ex.getRequestMethod();
 
-            enviarError(exchange, 404, "Ruta no encontrada");
+        if (ruta.equals("/api/auth/me") &&
+                metodo.equals("GET")) {
+
+            WebAuthService.Sesion sesion =
+                    sesionActual(ex);
+
+            if (sesion == null) {
+                enviarJson(ex, 200,
+                        "{\"autenticado\":false}");
+            } else {
+                enviarJson(ex, 200,
+                        usuarioJson(sesion));
+            }
+
             return;
         }
 
-        switch (exchange.getRequestMethod()) {
+        if (ruta.equals("/api/auth/logout") &&
+                metodo.equals("POST")) {
 
-            case "GET" -> consultarPostulaciones(exchange);
-
-            case "POST" -> registrarPostulacion(exchange);
-
-            default -> {
-                exchange.getResponseHeaders().set(
-                        "Allow", "GET, POST"
-                );
-
-                enviarError(
-                        exchange, 405, "Metodo no permitido"
-                );
+            if (!validarOrigen(ex)) {
+                return;
             }
-        }
-    }
 
-    private synchronized void registrarPostulacion(
-            HttpExchange exchange
-    ) throws IOException {
+            auth.cerrarSesion(leerCookie(ex));
 
-        if (!esFormulario(exchange)) {
-            enviarError(
-                    exchange, 415, "Formato no soportado"
+            ex.getResponseHeaders().add(
+                    "Set-Cookie",
+                    "escrims_session=; Path=/; HttpOnly; " +
+                            "SameSite=Strict; Max-Age=0"
             );
+
+            enviarJson(ex, 200,
+                    "{\"mensaje\":\"Sesion cerrada\"}");
+            return;
+        }
+
+        if (!ruta.equals("/api/auth/login") &&
+                !ruta.equals("/api/auth/register")) {
+
+            error(ex, 404, "Ruta no encontrada");
+            return;
+        }
+
+        if (!metodo.equals("POST")) {
+            error(ex, 405, "Metodo no permitido");
+            return;
+        }
+
+        if (!validarOrigen(ex) || !validarFormulario(ex)) {
             return;
         }
 
         try {
-            String cuerpo = leerCuerpo(exchange);
-            int scrimId = leerEntero(cuerpo, "scrimId");
+            Map<String, String> datos = formulario(ex);
 
-            Scrim scrim = scrimService.buscarPorId(scrimId);
+            WebAuthService.Acceso acceso;
+
+            if (ruta.equals("/api/auth/register")) {
+
+                int rango = Integer.parseInt(
+                        datos.getOrDefault("rango", "0")
+                );
+
+                acceso = auth.registrar(
+                        datos.get("username"),
+                        datos.get("email"),
+                        datos.get("password"),
+                        datos.get("region"),
+                        rango
+                );
+
+            } else {
+                acceso = auth.iniciarSesion(
+                        datos.get("email"),
+                        datos.get("password")
+                );
+            }
+
+            ex.getResponseHeaders().add(
+                    "Set-Cookie",
+                    "escrims_session=" + acceso.token()
+                            + "; Path=/; HttpOnly; SameSite=Strict"
+                            + "; Max-Age=28800"
+            );
+
+            enviarJson(ex, 200,
+                    usuarioJson(acceso.sesion()));
+
+        } catch (IllegalArgumentException e) {
+            error(ex, 400, e.getMessage());
+        }
+    }
+
+    private String usuarioJson(
+            WebAuthService.Sesion sesion
+    ) {
+        Usuario usuario = sesion.usuario();
+
+        return "{"
+                + "\"autenticado\":true,"
+                + "\"id\":" + usuario.getId() + ","
+                + "\"username\":\""
+                + escapar(usuario.getUsername()) + "\","
+                + "\"region\":\""
+                + escapar(usuario.getRegion()) + "\","
+                + "\"rol\":\""
+                + escapar(sesion.rol()) + "\""
+                + "}";
+    }
+
+    private void manejarPostulaciones(
+            HttpExchange ex
+    ) throws IOException {
+
+        if (!ex.getRequestURI().getPath()
+                .equals("/api/postulaciones")) {
+            error(ex, 404, "Ruta no encontrada");
+            return;
+        }
+
+        WebAuthService.Sesion sesion =
+                requerirSesion(ex);
+
+        if (sesion == null) {
+            return;
+        }
+
+        switch (ex.getRequestMethod()) {
+            case "GET" -> enviarJson(
+                    ex, 200,
+                    construirListado(
+                            sesion.usuario().getId(),
+                            false
+                    )
+            );
+
+            case "POST" -> registrarPostulacion(
+                    ex, sesion.usuario()
+            );
+
+            default -> error(
+                    ex, 405, "Metodo no permitido"
+            );
+        }
+    }
+
+    private synchronized void registrarPostulacion(
+            HttpExchange ex,
+            Usuario usuario
+    ) throws IOException {
+
+        if (!validarOrigen(ex) || !validarFormulario(ex)) {
+            return;
+        }
+
+        try {
+            int scrimId = entero(
+                    formulario(ex), "scrimId"
+            );
+
+            Scrim scrim =
+                    scrimService.buscarPorId(scrimId);
 
             if (scrim == null) {
-                enviarError(
-                        exchange, 404, "Partida no encontrada"
-                );
+                error(ex, 404, "Partida no encontrada");
                 return;
             }
 
             if (!scrim.getEstadoActual()
                     .equals("Buscando jugadores")
-                    || scrim.getCuposDisponibles() <= 0) {
+                    || scrim.getCuposDisponibles() == 0) {
 
-                enviarError(
-                        exchange, 409,
-                        "La partida no admite postulaciones"
-                );
+                error(ex, 409,
+                        "La partida no admite postulaciones");
                 return;
             }
 
             Postulacion postulacion =
                     postulacionService.crearPostulacion(
-                            siguientePostulacionId.getAndIncrement(),
-                            jugadorDemo,
+                            siguientePostulacion.getAndIncrement(),
+                            usuario,
                             scrim,
                             "Flexible"
                     );
 
             registros.put(
                     postulacion.getId(),
-                    new RegistroPostulacion(postulacion, scrim)
+                    new Registro(postulacion, scrim, usuario)
             );
 
-            String respuesta = "{"
-                    + "\"mensaje\":\"Postulacion registrada\","
-                    + "\"id\":" + postulacion.getId() + ","
-                    + "\"scrimId\":" + scrim.getId() + ","
-                    + "\"usuario\":\""
-                    + escapar(jugadorDemo.getUsername()) + "\","
-                    + "\"estado\":\""
-                    + escapar(postulacion.getEstado()) + "\""
-                    + "}";
-
-            enviarJson(exchange, 201, respuesta);
+            enviarJson(ex, 201,
+                    "{\"mensaje\":\"Postulacion registrada\","
+                            + "\"id\":" + postulacion.getId()
+                            + ",\"estado\":\"Pendiente\"}");
 
         } catch (IllegalArgumentException e) {
-            enviarError(exchange, 400, e.getMessage());
+            error(ex, 400, e.getMessage());
 
         } catch (IllegalStateException e) {
-            enviarError(exchange, 409, e.getMessage());
+            error(ex, 409, e.getMessage());
         }
-    }
-
-    private void consultarPostulaciones(
-            HttpExchange exchange
-    ) throws IOException {
-
-        enviarJson(
-                exchange,
-                200,
-                construirListado(false)
-        );
     }
 
     private void manejarOrganizador(
-            HttpExchange exchange
+            HttpExchange ex
     ) throws IOException {
 
-        if (!exchange.getRequestURI().getPath()
+        if (!ex.getRequestURI().getPath()
                 .equals("/api/organizador/postulaciones")) {
-
-            enviarError(exchange, 404, "Ruta no encontrada");
+            error(ex, 404, "Ruta no encontrada");
             return;
         }
 
-        switch (exchange.getRequestMethod()) {
+        WebAuthService.Sesion sesion =
+                requerirSesion(ex);
 
+        if (sesion == null) {
+            return;
+        }
+
+        if (!sesion.rol().equals("ORGANIZADOR")) {
+            error(ex, 403, "No tenes permisos");
+            return;
+        }
+
+        switch (ex.getRequestMethod()) {
             case "GET" -> enviarJson(
-                    exchange,
-                    200,
-                    construirListado(true)
+                    ex, 200,
+                    construirListado(null, true)
             );
 
-            case "POST" -> gestionarPostulacion(exchange);
+            case "POST" -> gestionarPostulacion(ex);
 
-            default -> {
-                exchange.getResponseHeaders().set(
-                        "Allow", "GET, POST"
-                );
-
-                enviarError(
-                        exchange, 405, "Metodo no permitido"
-                );
-            }
+            default -> error(
+                    ex, 405, "Metodo no permitido"
+            );
         }
     }
 
     private synchronized void gestionarPostulacion(
-            HttpExchange exchange
+            HttpExchange ex
     ) throws IOException {
 
-        if (!esFormulario(exchange)) {
-            enviarError(
-                    exchange, 415, "Formato no soportado"
-            );
+        if (!validarOrigen(ex) || !validarFormulario(ex)) {
             return;
         }
 
         try {
-            String cuerpo = leerCuerpo(exchange);
+            Map<String, String> datos = formulario(ex);
 
-            int postulacionId = leerEntero(
-                    cuerpo, "postulacionId"
-            );
+            int id = entero(datos, "postulacionId");
+            String accion = datos.get("accion");
 
-            String accion = obtenerParametro(
-                    cuerpo, "accion"
-            );
-
-            if (accion == null ||
-                    (!accion.equals("aceptar")
-                            && !accion.equals("rechazar"))) {
-
+            if (!"aceptar".equals(accion) &&
+                    !"rechazar".equals(accion)) {
                 throw new IllegalArgumentException(
-                        "La accion debe ser aceptar o rechazar"
+                        "Accion invalida"
                 );
             }
 
-            RegistroPostulacion registro =
-                    registros.get(postulacionId);
+            Registro registro = registros.get(id);
 
             if (registro == null) {
-                enviarError(
-                        exchange, 404,
-                        "Postulacion no encontrada"
-                );
+                error(ex, 404,
+                        "Postulacion no encontrada");
                 return;
             }
 
-            Postulacion postulacion = registro.postulacion();
+            Postulacion postulacion =
+                    registro.postulacion();
 
-            if (!postulacion.getEstado().equals("Pendiente")) {
-                enviarError(
-                        exchange, 409,
-                        "La postulacion ya fue resuelta"
-                );
+            if (!postulacion.getEstado()
+                    .equals("Pendiente")) {
+                error(ex, 409,
+                        "La solicitud ya fue resuelta");
                 return;
             }
 
             if (accion.equals("aceptar")) {
-
                 postulacionService.aceptarPostulacion(
                         postulacion
                 );
-
             } else {
-
                 postulacionService.rechazarPostulacion(
                         postulacion
                 );
             }
 
-            String respuesta = "{"
-                    + "\"mensaje\":\"Solicitud procesada\","
-                    + "\"id\":" + postulacion.getId() + ","
-                    + "\"scrimId\":"
-                    + registro.scrim().getId() + ","
-                    + "\"estado\":\""
-                    + escapar(postulacion.getEstado()) + "\""
-                    + "}";
-
-            enviarJson(exchange, 200, respuesta);
+            enviarJson(ex, 200,
+                    "{\"mensaje\":\"Solicitud procesada\","
+                            + "\"id\":" + postulacion.getId()
+                            + ",\"estado\":\""
+                            + escapar(postulacion.getEstado())
+                            + "\"}");
 
         } catch (IllegalArgumentException e) {
-            enviarError(exchange, 400, e.getMessage());
+            error(ex, 400, e.getMessage());
 
         } catch (IllegalStateException e) {
-            enviarError(exchange, 409, e.getMessage());
+            error(ex, 409, e.getMessage());
         }
     }
 
     private String construirListado(
+            Integer usuarioId,
             boolean incluirUsuario
     ) {
-
-        List<RegistroPostulacion> lista =
+        List<Registro> lista =
                 new ArrayList<>(registros.values());
 
-        lista.sort(
-                Comparator.comparingInt(
-                        registro -> registro.postulacion().getId()
-                )
-        );
+        lista.sort(Comparator.comparingInt(
+                r -> r.postulacion().getId()
+        ));
+
+        StringBuilder json = new StringBuilder("[");
+        boolean primero = true;
+
+        for (Registro registro : lista) {
+            Usuario usuario = registro.usuario();
+
+            if (usuarioId != null &&
+                    usuario.getId() != usuarioId) {
+                continue;
+            }
+
+            if (!primero) {
+                json.append(",");
+            }
+
+            primero = false;
+
+            Postulacion postulacion =
+                    registro.postulacion();
+
+            Scrim scrim = registro.scrim();
+
+            json.append("{")
+                    .append("\"id\":")
+                    .append(postulacion.getId())
+                    .append(",\"scrimId\":")
+                    .append(scrim.getId())
+                    .append(",\"juego\":\"")
+                    .append(escapar(scrim.getJuego()))
+                    .append("\",\"formato\":\"")
+                    .append(escapar(scrim.getFormato()))
+                    .append("\",\"region\":\"")
+                    .append(escapar(scrim.getRegion()))
+                    .append("\",\"fecha\":\"")
+                    .append(scrim.getFechaHora())
+                    .append("\",\"estado\":\"")
+                    .append(escapar(postulacion.getEstado()))
+                    .append("\"");
+
+            if (incluirUsuario) {
+                json.append(",\"usuario\":\"")
+                        .append(escapar(usuario.getUsername()))
+                        .append("\"");
+            }
+
+            json.append("}");
+        }
+
+        return json.append("]").toString();
+    }
+
+    private void listarScrims(
+            HttpExchange ex
+    ) throws IOException {
+
+        if (!ex.getRequestMethod().equals("GET")) {
+            error(ex, 405, "Metodo no permitido");
+            return;
+        }
+
+        if (!ex.getRequestURI().getPath()
+                .equals("/api/scrims")) {
+            error(ex, 404, "Ruta no encontrada");
+            return;
+        }
 
         StringBuilder json = new StringBuilder("[");
 
-        for (int i = 0; i < lista.size(); i++) {
+        List<Scrim> lista = scrimService.listarScrims();
 
-            RegistroPostulacion registro = lista.get(i);
-            Postulacion postulacion = registro.postulacion();
-            Scrim scrim = registro.scrim();
+        for (int i = 0; i < lista.size(); i++) {
+            Scrim scrim = lista.get(i);
 
             if (i > 0) {
                 json.append(",");
@@ -362,153 +506,39 @@ public class ServidorWeb {
 
             json.append("{")
                     .append("\"id\":")
-                    .append(postulacion.getId())
-                    .append(",")
-
-                    .append("\"scrimId\":")
                     .append(scrim.getId())
-                    .append(",")
-
-                    .append("\"juego\":\"")
+                    .append(",\"juego\":\"")
                     .append(escapar(scrim.getJuego()))
-                    .append("\",")
-
-                    .append("\"formato\":\"")
+                    .append("\",\"formato\":\"")
                     .append(escapar(scrim.getFormato()))
-                    .append("\",")
-
-                    .append("\"region\":\"")
+                    .append("\",\"region\":\"")
                     .append(escapar(scrim.getRegion()))
-                    .append("\",")
-
-                    .append("\"fecha\":\"")
+                    .append("\",\"fecha\":\"")
                     .append(scrim.getFechaHora())
-                    .append("\",")
-
-                    .append("\"estado\":\"")
-                    .append(escapar(postulacion.getEstado()))
-                    .append("\"");
-
-            if (incluirUsuario) {
-                json.append(",\"usuario\":\"")
-                        .append(escapar(jugadorDemo.getUsername()))
-                        .append("\"");
-            }
-
-            json.append("}");
+                    .append("\",\"estado\":\"")
+                    .append(escapar(scrim.getEstadoActual()))
+                    .append("\",\"cuposDisponibles\":")
+                    .append(scrim.getCuposDisponibles())
+                    .append("}");
         }
 
-        json.append("]");
-
-        return json.toString();
-    }
-
-    private boolean esFormulario(
-            HttpExchange exchange
-    ) {
-
-        String tipo = exchange.getRequestHeaders()
-                .getFirst("Content-Type");
-
-        return tipo != null
-                && tipo.toLowerCase().startsWith(
-                "application/x-www-form-urlencoded"
-        );
-    }
-
-    private String leerCuerpo(
-            HttpExchange exchange
-    ) throws IOException {
-
-        byte[] datos = exchange.getRequestBody()
-                .readNBytes(4097);
-
-        if (datos.length > 4096) {
-            throw new IllegalArgumentException(
-                    "Solicitud demasiado grande"
-            );
-        }
-
-        return new String(
-                datos, StandardCharsets.UTF_8
-        );
-    }
-
-    private int leerEntero(
-            String cuerpo,
-            String nombre
-    ) {
-
-        String valor = obtenerParametro(cuerpo, nombre);
-
-        if (valor == null || valor.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Falta el parametro: " + nombre
-            );
-        }
-
-        try {
-            int numero = Integer.parseInt(valor);
-
-            if (numero <= 0) {
-                throw new NumberFormatException();
-            }
-
-            return numero;
-
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                    "Parametro invalido: " + nombre
-            );
-        }
-    }
-
-    private String obtenerParametro(
-            String cuerpo,
-            String nombre
-    ) {
-
-        for (String parte : cuerpo.split("&")) {
-
-            String[] datos = parte.split("=", 2);
-
-            String clave = URLDecoder.decode(
-                    datos[0], StandardCharsets.UTF_8
-            );
-
-            if (clave.equals(nombre)) {
-
-                return datos.length > 1
-                        ? URLDecoder.decode(
-                        datos[1], StandardCharsets.UTF_8
-                )
-                        : "";
-            }
-        }
-
-        return null;
+        enviarJson(ex, 200,
+                json.append("]").toString());
     }
 
     private void servirPagina(
-            HttpExchange exchange
+            HttpExchange ex
     ) throws IOException {
 
-        if (!exchange.getRequestMethod().equals("GET")) {
-
-            exchange.getResponseHeaders().set("Allow", "GET");
-
-            enviarError(
-                    exchange, 405, "Metodo no permitido"
-            );
+        if (!ex.getRequestMethod().equals("GET")) {
+            error(ex, 405, "Metodo no permitido");
             return;
         }
 
-        String ruta = exchange.getRequestURI().getPath();
         String archivo;
         String tipo;
 
-        switch (ruta) {
-
+        switch (ex.getRequestURI().getPath()) {
             case "/" -> {
                 archivo = "index.html";
                 tipo = "text/html; charset=UTF-8";
@@ -525,107 +555,169 @@ public class ServidorWeb {
             }
 
             default -> {
-                enviarTexto(
-                        exchange, 404,
-                        "Pagina no encontrada",
-                        "text/plain; charset=UTF-8"
-                );
+                error(ex, 404, "Pagina no encontrada");
                 return;
             }
         }
 
-        Path rutaArchivo = carpetaWeb.resolve(archivo);
+        Path ruta = carpetaWeb.resolve(archivo);
 
-        if (!Files.isRegularFile(rutaArchivo)) {
-
-            enviarTexto(
-                    exchange, 404,
-                    "No se encontro el archivo: " + archivo,
-                    "text/plain; charset=UTF-8"
-            );
+        if (!Files.isRegularFile(ruta)) {
+            error(ex, 404,
+                    "Archivo no encontrado: " + archivo);
             return;
         }
 
-        enviarBytes(
-                exchange,
-                200,
-                Files.readAllBytes(rutaArchivo),
-                tipo
-        );
+        enviar(ex, 200,
+                Files.readAllBytes(ruta), tipo);
     }
 
-    private void listarScrims(
-            HttpExchange exchange
+    private WebAuthService.Sesion sesionActual(
+            HttpExchange ex
+    ) {
+        return auth.obtenerSesion(leerCookie(ex));
+    }
+
+    private WebAuthService.Sesion requerirSesion(
+            HttpExchange ex
     ) throws IOException {
 
-        if (!exchange.getRequestURI().getPath()
-                .equals("/api/scrims")) {
+        WebAuthService.Sesion sesion =
+                sesionActual(ex);
 
-            enviarError(exchange, 404, "Ruta no encontrada");
-            return;
+        if (sesion == null) {
+            error(ex, 401,
+                    "Inicia sesion para continuar");
         }
 
-        if (!exchange.getRequestMethod().equals("GET")) {
+        return sesion;
+    }
 
-            exchange.getResponseHeaders().set(
-                    "Allow", "GET"
-            );
+    private String leerCookie(HttpExchange ex) {
+        String cookies = ex.getRequestHeaders()
+                .getFirst("Cookie");
 
-            enviarError(
-                    exchange, 405, "Metodo no permitido"
-            );
-            return;
+        if (cookies == null) {
+            return null;
         }
 
-        List<Scrim> scrims = scrimService.listarScrims();
+        for (String parte : cookies.split(";")) {
+            String cookie = parte.trim();
 
-        StringBuilder json = new StringBuilder("[");
+            if (cookie.startsWith("escrims_session=")) {
+                return cookie.substring(
+                        "escrims_session=".length()
+                );
+            }
+        }
 
-        for (int i = 0; i < scrims.size(); i++) {
+        return null;
+    }
 
-            Scrim scrim = scrims.get(i);
+    private boolean validarOrigen(
+            HttpExchange ex
+    ) throws IOException {
 
-            if (i > 0) {
-                json.append(",");
+        String origen = ex.getRequestHeaders()
+                .getFirst("Origin");
+
+        if (origen != null &&
+                !origen.equals(
+                        "http://localhost:" + puerto
+                ) &&
+                !origen.equals(
+                        "http://127.0.0.1:" + puerto
+                )) {
+
+            error(ex, 403, "Origen no permitido");
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean validarFormulario(
+            HttpExchange ex
+    ) throws IOException {
+
+        String tipo = ex.getRequestHeaders()
+                .getFirst("Content-Type");
+
+        if (tipo == null ||
+                !tipo.toLowerCase().startsWith(
+                        "application/x-www-form-urlencoded"
+                )) {
+
+            error(ex, 415, "Formato no soportado");
+            return false;
+        }
+
+        return true;
+    }
+
+    private Map<String, String> formulario(
+            HttpExchange ex
+    ) throws IOException {
+
+        byte[] bytes = ex.getRequestBody()
+                .readNBytes(8193);
+
+        if (bytes.length > 8192) {
+            throw new IllegalArgumentException(
+                    "Solicitud demasiado grande"
+            );
+        }
+
+        String cuerpo = new String(
+                bytes, StandardCharsets.UTF_8
+        );
+
+        Map<String, String> datos =
+                new java.util.HashMap<>();
+
+        for (String parte : cuerpo.split("&")) {
+            String[] pareja = parte.split("=", 2);
+
+            String clave = URLDecoder.decode(
+                    pareja[0], StandardCharsets.UTF_8
+            );
+
+            String valor = pareja.length == 2
+                    ? URLDecoder.decode(
+                    pareja[1],
+                    StandardCharsets.UTF_8
+            )
+                    : "";
+
+            datos.put(clave, valor);
+        }
+
+        return datos;
+    }
+
+    private int entero(
+            Map<String, String> datos,
+            String nombre
+    ) {
+        try {
+            int numero = Integer.parseInt(
+                    datos.getOrDefault(nombre, "")
+            );
+
+            if (numero <= 0) {
+                throw new NumberFormatException();
             }
 
-            json.append("{")
-                    .append("\"id\":")
-                    .append(scrim.getId())
-                    .append(",")
+            return numero;
 
-                    .append("\"juego\":\"")
-                    .append(escapar(scrim.getJuego()))
-                    .append("\",")
-
-                    .append("\"formato\":\"")
-                    .append(escapar(scrim.getFormato()))
-                    .append("\",")
-
-                    .append("\"region\":\"")
-                    .append(escapar(scrim.getRegion()))
-                    .append("\",")
-
-                    .append("\"fecha\":\"")
-                    .append(scrim.getFechaHora())
-                    .append("\",")
-
-                    .append("\"estado\":\"")
-                    .append(escapar(scrim.getEstadoActual()))
-                    .append("\",")
-
-                    .append("\"cuposDisponibles\":")
-                    .append(scrim.getCuposDisponibles())
-                    .append("}");
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "Parametro invalido: " + nombre
+            );
         }
-
-        json.append("]");
-
-        enviarJson(exchange, 200, json.toString());
     }
 
     private String escapar(String texto) {
-
         if (texto == null) {
             return "";
         }
@@ -633,9 +725,7 @@ public class ServidorWeb {
         StringBuilder resultado = new StringBuilder();
 
         for (char c : texto.toCharArray()) {
-
             switch (c) {
-
                 case '"' -> resultado.append("\\\"");
                 case '\\' -> resultado.append("\\\\");
                 case '\n' -> resultado.append("\\n");
@@ -645,7 +735,9 @@ public class ServidorWeb {
                 default -> {
                     if (c < 0x20) {
                         resultado.append(
-                                String.format("\\u%04x", (int) c)
+                                String.format(
+                                        "\\u%04x", (int) c
+                                )
                         );
                     } else {
                         resultado.append(c);
@@ -657,89 +749,58 @@ public class ServidorWeb {
         return resultado.toString();
     }
 
-    private void enviarError(
-            HttpExchange exchange,
+    private void error(
+            HttpExchange ex,
             int codigo,
             String mensaje
     ) throws IOException {
 
-        enviarJson(
-                exchange,
-                codigo,
-                "{\"error\":\"" + escapar(mensaje) + "\"}"
-        );
+        enviarJson(ex, codigo,
+                "{\"error\":\""
+                        + escapar(mensaje) + "\"}");
     }
 
     private void enviarJson(
-            HttpExchange exchange,
+            HttpExchange ex,
             int codigo,
             String contenido
     ) throws IOException {
 
-        enviarTexto(
-                exchange,
-                codigo,
-                contenido,
-                "application/json; charset=UTF-8"
-        );
-    }
-
-    private void enviarTexto(
-            HttpExchange exchange,
-            int codigo,
-            String contenido,
-            String tipo
-    ) throws IOException {
-
-        enviarBytes(
-                exchange,
-                codigo,
+        enviar(ex, codigo,
                 contenido.getBytes(StandardCharsets.UTF_8),
-                tipo
-        );
+                "application/json; charset=UTF-8");
     }
 
-    private void enviarBytes(
-            HttpExchange exchange,
+    private void enviar(
+            HttpExchange ex,
             int codigo,
             byte[] contenido,
             String tipo
     ) throws IOException {
 
-        exchange.getResponseHeaders().set(
+        ex.getResponseHeaders().set(
                 "Content-Type", tipo
         );
 
-        exchange.getResponseHeaders().set(
+        ex.getResponseHeaders().set(
                 "Cache-Control", "no-store"
         );
 
-        exchange.sendResponseHeaders(
+        ex.sendResponseHeaders(
                 codigo, contenido.length
         );
 
-        try (OutputStream salida = exchange.getResponseBody()) {
+        try (OutputStream salida =
+                     ex.getResponseBody()) {
             salida.write(contenido);
         }
     }
 
     public void iniciar() {
-
         servidor.start();
 
-        System.out.println("Servidor eScrims iniciado");
-        System.out.println("Web: http://localhost:" + puerto);
         System.out.println(
-                "Partidas: http://localhost:"
-                        + puerto + "/api/scrims"
-        );
-        System.out.println(
-                "Mis postulaciones: http://localhost:"
-                        + puerto + "/api/postulaciones"
-        );
-        System.out.println(
-                "Organizador: http://localhost:"
-                        + puerto + "/api/organizador/postulaciones"
+                "eScrims: http://localhost:" + puerto
         );
     }
 
@@ -747,9 +808,13 @@ public class ServidorWeb {
         servidor.stop(0);
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(
+            String[] args
+    ) throws IOException {
 
-        ServidorWeb servidor = new ServidorWeb(9090);
+        ServidorWeb servidor =
+                new ServidorWeb(9090);
+
         servidor.iniciar();
     }
 }
