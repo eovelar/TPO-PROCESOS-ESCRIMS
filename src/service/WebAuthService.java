@@ -2,17 +2,18 @@
 package service;
 
 import domain.Usuario;
+import persistence.UsuarioRepository;
 
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.sql.SQLException;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class WebAuthService {
 
@@ -20,55 +21,40 @@ public class WebAuthService {
 
     public record Acceso(String token, Sesion sesion) {}
 
-    private static class Cuenta {
-        private final Usuario usuario;
-        private final String rol;
-
-        private Cuenta(Usuario usuario, String rol) {
-            this.usuario = usuario;
-            this.rol = rol;
-        }
-    }
-
     private record SesionGuardada(
-            Cuenta cuenta,
+            Sesion sesion,
             Instant vencimiento
     ) {}
 
-    private final Map<String, Cuenta> cuentas =
-            new ConcurrentHashMap<>();
+    private final UsuarioRepository usuarioRepository =
+            new UsuarioRepository();
 
     private final Map<String, SesionGuardada> sesiones =
             new ConcurrentHashMap<>();
-
-    private final AtomicInteger siguienteUsuario =
-            new AtomicInteger(2000);
 
     private final SecureRandom random = new SecureRandom();
 
     private static final int ITERACIONES = 210000;
     private static final long DURACION_HORAS = 8;
 
+    private final Usuario organizadorDemo;
+
     public WebAuthService() {
-        byte[] clave = new byte[18];
-        random.nextBytes(clave);
 
-        String contrasena = Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(clave);
+        String contrasenaDemo = generarContrasenaDemo();
 
-        crearCuenta(
+        organizadorDemo = new Usuario(
+                999999,
                 "OrganizadorDemo",
                 "organizador@escrims.local",
-                contrasena,
+                generarHash(contrasenaDemo),
                 "LAS",
-                5,
-                "ORGANIZADOR"
+                5
         );
 
         System.out.println("Cuenta de organizador local:");
         System.out.println("Email: organizador@escrims.local");
-        System.out.println("Contraseña: " + contrasena);
+        System.out.println("Contrasena: " + contrasenaDemo);
     }
 
     public synchronized Acceso registrar(
@@ -78,56 +64,131 @@ public class WebAuthService {
             String region,
             int rango
     ) {
+
         validar(nombre, email, contrasena, region, rango);
 
-        String clave = email.trim().toLowerCase();
+        String emailNormalizado =
+                email.trim().toLowerCase();
 
-        if (cuentas.containsKey(clave)) {
+        if (emailNormalizado.equals(
+                "organizador@escrims.local")) {
+
             throw new IllegalArgumentException(
-                    "Ya existe una cuenta con ese email"
+                    "Ese email esta reservado"
             );
         }
 
-        Cuenta cuenta = crearCuenta(
-                nombre.trim(),
-                clave,
-                contrasena,
-                region,
-                rango,
-                "JUGADOR"
-        );
+        try {
 
-        return crearSesion(cuenta);
+            if (usuarioRepository.existeEmail(emailNormalizado)) {
+                throw new IllegalArgumentException(
+                        "Ya existe una cuenta con ese email"
+                );
+            }
+
+            String hash = generarHash(contrasena);
+
+            UsuarioRepository.UsuarioGuardado registro =
+                    usuarioRepository.guardar(
+                            nombre.trim(),
+                            emailNormalizado,
+                            hash,
+                            region,
+                            rango,
+                            "JUGADOR"
+                    );
+
+            return crearSesion(
+                    registro.usuario(),
+                    registro.rol()
+            );
+
+        } catch (SQLException e) {
+
+            if ("23505".equals(e.getSQLState())) {
+                throw new IllegalArgumentException(
+                        "El email o nombre de usuario ya esta registrado"
+                );
+            }
+
+            throw new IllegalStateException(
+                    "No se pudo guardar la cuenta en la base de datos",
+                    e
+            );
+        }
     }
 
     public Acceso iniciarSesion(
             String email,
             String contrasena
     ) {
+
         if (email == null || contrasena == null) {
             throw new IllegalArgumentException(
-                    "Email o contraseña incorrectos"
+                    "Email o contrasena incorrectos"
             );
         }
 
-        Cuenta cuenta = cuentas.get(
-                email.trim().toLowerCase()
-        );
+        String emailNormalizado =
+                email.trim().toLowerCase();
 
-        if (cuenta == null ||
-                !comprobarContrasena(
-                        contrasena,
-                        cuenta.usuario.getPasswordHash()
-                )) {
-            throw new IllegalArgumentException(
-                    "Email o contraseña incorrectos"
+        if (emailNormalizado.equals(
+                "organizador@escrims.local")) {
+
+            if (!comprobarContrasena(
+                    contrasena,
+                    organizadorDemo.getPasswordHash()
+            )) {
+                throw new IllegalArgumentException(
+                        "Email o contrasena incorrectos"
+                );
+            }
+
+            return crearSesion(
+                    organizadorDemo,
+                    "ORGANIZADOR"
             );
         }
 
-        return crearSesion(cuenta);
+        try {
+
+            UsuarioRepository.UsuarioGuardado registro =
+                    usuarioRepository.buscarPorEmail(
+                            emailNormalizado
+                    );
+
+            if (registro == null) {
+                throw new IllegalArgumentException(
+                        "Email o contrasena incorrectos"
+                );
+            }
+
+            Usuario usuario = registro.usuario();
+
+            if (!comprobarContrasena(
+                    contrasena,
+                    usuario.getPasswordHash()
+            )) {
+                throw new IllegalArgumentException(
+                        "Email o contrasena incorrectos"
+                );
+            }
+
+            return crearSesion(
+                    usuario,
+                    registro.rol()
+            );
+
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "No se pudo consultar la base de datos",
+                    e
+            );
+        }
     }
 
     public Sesion obtenerSesion(String token) {
+
         if (token == null || token.isBlank()) {
             return null;
         }
@@ -138,50 +199,29 @@ public class WebAuthService {
             return null;
         }
 
-        if (Instant.now().isAfter(guardada.vencimiento())) {
+        if (!Instant.now().isBefore(
+                guardada.vencimiento()
+        )) {
+
             sesiones.remove(token);
             return null;
         }
 
-        return new Sesion(
-                guardada.cuenta().usuario,
-                guardada.cuenta().rol
-        );
+        return guardada.sesion();
     }
 
     public void cerrarSesion(String token) {
+
         if (token != null) {
             sesiones.remove(token);
         }
     }
 
-    private Cuenta crearCuenta(
-            String nombre,
-            String email,
-            String contrasena,
-            String region,
-            int rango,
+    private Acceso crearSesion(
+            Usuario usuario,
             String rol
     ) {
-        String hash = generarHash(contrasena);
 
-        Usuario usuario = new Usuario(
-                siguienteUsuario.getAndIncrement(),
-                nombre,
-                email,
-                hash,
-                region,
-                rango
-        );
-
-        Cuenta cuenta = new Cuenta(usuario, rol);
-
-        cuentas.put(email.toLowerCase(), cuenta);
-
-        return cuenta;
-    }
-
-    private Acceso crearSesion(Cuenta cuenta) {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
 
@@ -189,20 +229,19 @@ public class WebAuthService {
                 .withoutPadding()
                 .encodeToString(bytes);
 
+        Sesion sesion = new Sesion(usuario, rol);
+
         sesiones.put(
                 token,
                 new SesionGuardada(
-                        cuenta,
+                        sesion,
                         Instant.now().plusSeconds(
                                 DURACION_HORAS * 3600
                         )
                 )
         );
 
-        return new Acceso(
-                token,
-                new Sesion(cuenta.usuario, cuenta.rol)
-        );
+        return new Acceso(token, sesion);
     }
 
     private void validar(
@@ -212,52 +251,76 @@ public class WebAuthService {
             String region,
             int rango
     ) {
+
         if (nombre == null ||
-                !nombre.trim().matches("[a-zA-Z0-9_]{3,24}")) {
+                !nombre.trim().matches(
+                        "[a-zA-Z0-9_]{3,24}"
+                )) {
+
             throw new IllegalArgumentException(
-                    "El usuario debe tener entre 3 y 24 caracteres: letras, números o guion bajo"
+                    "El usuario debe tener entre 3 y 24 caracteres"
             );
         }
 
         if (email == null ||
+                email.length() > 150 ||
                 !email.trim().matches(
                         "[^\\s@]+@[^\\s@]+\\.[^\\s@]+"
-                ) ||
-                email.length() > 150) {
+                )) {
+
             throw new IllegalArgumentException(
-                    "El email no es válido"
+                    "El email no es valido"
             );
         }
 
         if (contrasena == null ||
                 contrasena.length() < 8 ||
                 contrasena.length() > 128) {
+
             throw new IllegalArgumentException(
-                    "La contraseña debe tener entre 8 y 128 caracteres"
+                    "La contrasena debe tener entre 8 y 128 caracteres"
             );
         }
 
         if (region == null ||
                 !region.matches("LAS|LAN|BR")) {
+
             throw new IllegalArgumentException(
-                    "Seleccioná una región válida"
+                    "Selecciona una region valida"
             );
         }
 
         if (rango < 1 || rango > 10) {
+
             throw new IllegalArgumentException(
                     "El rango debe estar entre 1 y 10"
             );
         }
     }
 
+    private String generarContrasenaDemo() {
+
+        byte[] bytes = new byte[18];
+        random.nextBytes(bytes);
+
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
+    }
+
     private String generarHash(String contrasena) {
+
         byte[] sal = new byte[16];
         random.nextBytes(sal);
 
-        byte[] hash = derivar(contrasena, sal, ITERACIONES);
+        byte[] hash = derivar(
+                contrasena,
+                sal,
+                ITERACIONES
+        );
 
-        return "pbkdf2-sha256:" + ITERACIONES + ":"
+        return "pbkdf2-sha256:"
+                + ITERACIONES + ":"
                 + Base64.getEncoder().encodeToString(sal)
                 + ":"
                 + Base64.getEncoder().encodeToString(hash);
@@ -267,7 +330,13 @@ public class WebAuthService {
             String contrasena,
             String almacenado
     ) {
+
+        if (almacenado == null) {
+            return false;
+        }
+
         try {
+
             String[] partes = almacenado.split(":");
 
             if (partes.length != 4 ||
@@ -275,20 +344,29 @@ public class WebAuthService {
                 return false;
             }
 
-            int iteraciones = Integer.parseInt(partes[1]);
+            int iteraciones =
+                    Integer.parseInt(partes[1]);
+
+            if (iteraciones < 100000 ||
+                    iteraciones > 1000000) {
+                return false;
+            }
 
             byte[] sal = Base64.getDecoder()
                     .decode(partes[2]);
 
-            byte[] esperado = Base64.getDecoder()
+            byte[] hashEsperado = Base64.getDecoder()
                     .decode(partes[3]);
 
-            byte[] calculado = derivar(
-                    contrasena, sal, iteraciones
+            byte[] hashCalculado = derivar(
+                    contrasena,
+                    sal,
+                    iteraciones
             );
 
             return MessageDigest.isEqual(
-                    esperado, calculado
+                    hashEsperado,
+                    hashCalculado
             );
 
         } catch (RuntimeException e) {
@@ -301,13 +379,19 @@ public class WebAuthService {
             byte[] sal,
             int iteraciones
     ) {
-        char[] caracteres = contrasena.toCharArray();
+
+        char[] caracteres =
+                contrasena.toCharArray();
 
         PBEKeySpec especificacion = new PBEKeySpec(
-                caracteres, sal, iteraciones, 256
+                caracteres,
+                sal,
+                iteraciones,
+                256
         );
 
         try {
+
             SecretKeyFactory fabrica =
                     SecretKeyFactory.getInstance(
                             "PBKDF2WithHmacSHA256"
@@ -318,16 +402,16 @@ public class WebAuthService {
             ).getEncoded();
 
         } catch (Exception e) {
+
             throw new IllegalStateException(
-                    "No se pudo proteger la contraseña",
+                    "No se pudo procesar la contraseña",
                     e
             );
 
         } finally {
+
             especificacion.clearPassword();
-            java.util.Arrays.fill(
-                    caracteres, '\0'
-            );
+            Arrays.fill(caracteres, '\0');
         }
     }
 }
