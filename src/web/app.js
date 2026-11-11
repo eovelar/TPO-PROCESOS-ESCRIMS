@@ -1,3 +1,13 @@
+/* ==========================================================
+   eScrims — app.js
+   Partidas, cuenta, postulaciones, panel organizador,
+   notificaciones e indicador de sección.
+   ========================================================== */
+
+/* marca que hay JS: habilita las animaciones que dependen de él */
+document.documentElement.classList.add("js");
+
+/* elementos */
 
 const listaScrims = document.getElementById("listaScrims");
 const contador = document.getElementById("contador");
@@ -7,6 +17,32 @@ const busqueda = document.getElementById("busqueda");
 const filtroJuego = document.getElementById("filtroJuego");
 const filtroRegion = document.getElementById("filtroRegion");
 const limpiarFiltros = document.getElementById("limpiarFiltros");
+
+const formLogin = document.getElementById("formLogin");
+const formRegistro = document.getElementById("formRegistro");
+const contenidoCuenta = document.getElementById("contenidoCuenta");
+const cuentaDescripcion = document.getElementById("cuentaDescripcion");
+const perfilCuenta = document.getElementById("perfilCuenta");
+const cerrarSesionBoton = document.getElementById("cerrarSesion");
+
+const seccionPostulaciones = document.getElementById("mis-postulaciones");
+const listaPostulaciones = document.getElementById("listaPostulaciones");
+const actualizarPostulacionesBoton = document.getElementById("actualizarPostulaciones");
+
+const seccionOrganizador = document.getElementById("organizador");
+const listaOrganizador = document.getElementById("listaOrganizador");
+const actualizarOrganizadorBoton = document.getElementById("actualizarOrganizador");
+
+const navPostulaciones = document.getElementById("navPostulaciones");
+const navOrganizador = document.getElementById("navOrganizador");
+
+/* estado */
+
+let scrims = [];
+let scrimsCargadas = false;
+let usuario = null;
+let postulaciones = [];
+let modoDemo = false;
 
 const nombresJuegos = {
     Valorant: "VALORANT",
@@ -20,29 +56,20 @@ const iconosJuegos = {
     CS2: "CS2"
 };
 
-let usuarioActual = null;
-let scrims = [];
-let misPostulaciones = [];
-let postulacionesOrganizador = [];
+/* utilidades */
 
-let procesando = false;
-
-function crearElemento(etiqueta, clase = "", texto) {
+function crearElemento(etiqueta, clase, contenido) {
     const elemento = document.createElement(etiqueta);
 
     if (clase) {
         elemento.className = clase;
     }
 
-    if (texto !== undefined) {
-        elemento.textContent = texto;
+    if (contenido !== undefined) {
+        elemento.textContent = contenido;
     }
 
     return elemento;
-}
-
-function nombreJuego(juego) {
-    return nombresJuegos[juego] || juego;
 }
 
 function formatearFecha(fecha) {
@@ -50,7 +77,8 @@ function formatearFecha(fecha) {
         return "Sin fecha";
     }
 
-    const valor = new Date(fecha);
+    // LocalDateTime de Java puede traer nanosegundos: se recortan
+    const valor = new Date(String(fecha).replace(/\.\d+$/, ""));
 
     if (Number.isNaN(valor.getTime())) {
         return fecha;
@@ -65,1012 +93,1230 @@ function formatearFecha(fecha) {
     }).format(valor);
 }
 
-function detalle(etiqueta, valor) {
+function crearDetalle(nombre, valor) {
     const fila = crearElemento("div", "detail-row");
+    const etiqueta = crearElemento("span", "", nombre);
+    const contenido = crearElemento("strong", "", String(valor));
 
-    fila.append(
-        crearElemento("span", "", etiqueta),
-        crearElemento("strong", "", String(valor))
-    );
+    fila.append(etiqueta, contenido);
 
     return fila;
 }
 
-function estadoClase(estado) {
-    return {
-        Pendiente: "pendiente",
-        Aceptada: "aceptada",
-        Rechazada: "rechazada"
-    }[estado] || "pendiente";
+function nombreJuego(juego) {
+    return nombresJuegos[juego] || juego;
 }
 
-function estadoEtiqueta(estado) {
-    return crearElemento(
-        "span",
-        "postulacion-estado " + estadoClase(estado),
-        estado.toUpperCase()
-    );
-}
+function claseEstado(estado) {
+    const texto = String(estado || "").toLowerCase();
 
-function notificar(titulo, mensaje, tipo = "exito") {
-    let contenedor = document.getElementById("notificaciones");
-
-    if (!contenedor) {
-        contenedor = crearElemento("div", "notificaciones");
-        contenedor.id = "notificaciones";
-        contenedor.setAttribute("aria-live", "polite");
-        document.body.append(contenedor);
+    if (texto.startsWith("acept")) {
+        return "aceptada";
     }
 
-    const aviso = crearElemento(
-        "div", "notificacion " + tipo
-    );
-
-    const icono = crearElemento(
-        "div",
-        "notificacion-icono",
-        tipo === "exito" ? "✓" : "!"
-    );
-
-    const contenido = crearElemento(
-        "div", "notificacion-contenido"
-    );
-
-    contenido.append(
-        crearElemento("strong", "notificacion-titulo", titulo),
-        crearElemento("p", "notificacion-mensaje", mensaje)
-    );
-
-    const cerrar = crearElemento(
-        "button", "notificacion-cerrar", "×"
-    );
-
-    cerrar.type = "button";
-
-    const progreso = crearElemento(
-        "div", "notificacion-progreso"
-    );
-
-    aviso.append(icono, contenido, cerrar, progreso);
-    contenedor.append(aviso);
-
-    let cerrado = false;
-
-    function eliminar() {
-        if (cerrado) {
-            return;
-        }
-
-        cerrado = true;
-        aviso.classList.add("saliendo");
-
-        setTimeout(() => aviso.remove(), 250);
+    if (texto.startsWith("rechaz")) {
+        return "rechazada";
     }
 
-    cerrar.addEventListener("click", eliminar);
-    setTimeout(eliminar, 5000);
+    return "pendiente";
 }
 
-async function solicitar(ruta, opciones = {}) {
-    const respuesta = await fetch(ruta, {
+function irA(id) {
+    const destino = document.getElementById(id);
+
+    if (destino) {
+        destino.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+}
+
+/* comunicación con el servidor */
+
+async function api(url, opciones = {}) {
+    const respuesta = await fetch(url, {
         cache: "no-store",
-        credentials: "same-origin",
         ...opciones
     });
 
-    let datos;
+    let datos = null;
 
     try {
         datos = await respuesta.json();
-    } catch {
-        throw new Error(
-            "Respuesta inesperada del servidor"
-        );
+    } catch (error) {
+        datos = null;
     }
 
     if (!respuesta.ok) {
-        throw new Error(
-            datos.error || "Error HTTP " + respuesta.status
+        const error = new Error(
+            (datos && datos.error) || "Error HTTP " + respuesta.status
         );
+        error.status = respuesta.status;
+        throw error;
     }
 
     return datos;
 }
 
-async function enviarFormulario(ruta, datos) {
-    return solicitar(ruta, {
+function enviarFormulario(url, valores) {
+    return api(url, {
         method: "POST",
         headers: {
-            "Content-Type":
-                "application/x-www-form-urlencoded"
+            "Content-Type": "application/x-www-form-urlencoded"
         },
-        body: new URLSearchParams(datos).toString()
+        body: new URLSearchParams(valores)
     });
 }
 
-function crearCampo(nombre, etiqueta, tipo, requerido = true) {
-    const contenedor = crearElemento(
-        "div", "filter-field"
-    );
+/* ==========================================================
+   mascota pixelada (16x16, dibujada con SVG)
+   ========================================================== */
 
-    const label = crearElemento("label", "", etiqueta);
+const COLORES_BICHO = {
+    o: "#4a2fa8", // contorno
+    v: "#a07cff", // cuerpo
+    w: "#d9ccff", // brillo
+    l: "#d6ff5e", // ojos y antenas
+    k: "#120d1f", // pupilas y boca
+    p: "#ff8fc0"  // cachetes
+};
 
-    const entrada = document.createElement("input");
-    entrada.name = nombre;
-    entrada.type = tipo;
-    entrada.required = requerido;
+const ANTENAS_BICHO = [
+    "....l......l....",
+    ".....o....o.....",
+    "......o..o......"
+];
 
-    if (tipo === "password") {
-        entrada.minLength = 8;
+const CUERPO_BICHO = [
+    "................",
+    "................",
+    "................",
+    "....oooooooo....",
+    "...ovwwvvvvvo...",
+    "..ovwvvvvvvvvo..",
+    "..ovvvvvvvvvvo..",
+    "..ovvvvvvvvvvo..",
+    "..ovvvvvvvvvvo..",
+    "..ovvvvvvvvvvo..",
+    ".oovvvvvvvvvvoo.",
+    "o.ovvvvvvvvvvo.o",
+    "...ovvvvvvvvo...",
+    "....oooooooo....",
+    "....o.o..o.o....",
+    "................"
+];
+
+const CARAS_BICHO = {
+    feliz: {
+        abiertos: [[6, ".....ll..ll....."], [7, ".....lk..lk....."]],
+        cerrados: [[7, ".....kk..kk....."]],
+        boca: [[9, "...pp.k..k.pp..."], [10, ".......kk......."]]
+    },
+    triste: {
+        abiertos: [[7, ".....l....l....."], [8, ".....k....k....."]],
+        cerrados: [[8, ".....k....k....."]],
+        boca: [[10, ".......kk......."], [11, "......k..k......"]]
     }
+};
 
-    contenedor.append(label, entrada);
+function pixeles(filas) {
+    let html = "";
 
-    return contenedor;
-}
-
-function crearSeleccion(nombre, etiqueta, opciones) {
-    const contenedor = crearElemento(
-        "div", "filter-field"
-    );
-
-    const label = crearElemento("label", "", etiqueta);
-    const select = document.createElement("select");
-
-    select.name = nombre;
-    select.required = true;
-
-    opciones.forEach(opcion => {
-        select.add(
-            new Option(opcion.texto, opcion.valor)
-        );
-    });
-
-    contenedor.append(label, select);
-
-    return contenedor;
-}
-
-function crearSeccion(id, clase, titulo, descripcion) {
-    const seccion = crearElemento("section", clase);
-    seccion.id = id;
-
-    const contenedor = crearElemento("div", "container");
-
-    contenedor.append(
-        crearElemento(
-            "span", "section-eyebrow", "// eScrims"
-        ),
-        crearElemento(
-            "h2", "mis-postulaciones-titulo", titulo
-        ),
-        crearElemento(
-            "p", "section-description", descripcion
-        )
-    );
-
-    seccion.append(contenedor);
-
-    return { seccion, contenedor };
-}
-
-function crearFormularioLogin() {
-    const formulario = crearElemento(
-        "form", "organizador-card"
-    );
-
-    formulario.append(
-        crearElemento(
-            "h3", "organizador-juego", "INICIAR SESIÓN"
-        ),
-        crearCampo("email", "Email", "email"),
-        crearCampo("password", "Contraseña", "password")
-    );
-
-    const boton = crearElemento(
-        "button", "postular-button", "INGRESAR →"
-    );
-
-    boton.type = "submit";
-    formulario.append(boton);
-
-    formulario.addEventListener("submit", async evento => {
-        evento.preventDefault();
-
-        if (procesando) {
-            return;
-        }
-
-        procesando = true;
-        boton.disabled = true;
-
-        try {
-            const datos = Object.fromEntries(
-                new FormData(formulario)
-            );
-
-            await enviarFormulario(
-                "/api/auth/login", datos
-            );
-
-            await recuperarSesion();
-
-            notificar(
-                "¡Sesión iniciada!",
-                "Ya podés utilizar tu cuenta de eScrims."
-            );
-
-        } catch (error) {
-            notificar(
-                "No se pudo ingresar",
-                error.message,
-                "error"
-            );
-
-        } finally {
-            procesando = false;
-            boton.disabled = false;
-        }
-    });
-
-    return formulario;
-}
-
-function crearFormularioRegistro() {
-    const formulario = crearElemento(
-        "form", "organizador-card"
-    );
-
-    formulario.append(
-        crearElemento(
-            "h3", "organizador-juego", "CREAR CUENTA"
-        ),
-        crearCampo("username", "Nombre de usuario", "text"),
-        crearCampo("email", "Email", "email"),
-        crearCampo("password", "Contraseña", "password"),
-        crearSeleccion("region", "Región", [
-            { texto: "LAS", valor: "LAS" },
-            { texto: "LAN", valor: "LAN" },
-            { texto: "BR", valor: "BR" }
-        ])
-    );
-
-    const rangos = [];
-
-    for (let i = 1; i <= 10; i++) {
-        rangos.push({
-            texto: "Rango " + i,
-            valor: String(i)
+    filas.forEach(([y, fila]) => {
+        [...fila].forEach((letra, x) => {
+            if (COLORES_BICHO[letra]) {
+                html += '<rect x="' + x + '" y="' + y +
+                    '" width="1" height="1" fill="' + COLORES_BICHO[letra] + '"/>';
+            }
         });
+    });
+
+    return html;
+}
+
+// tipo: "feliz", "triste" o "cargando"
+function crearBicho(tipo = "feliz") {
+    const cara = CARAS_BICHO[tipo === "triste" ? "triste" : "feliz"];
+    const numeradas = filas => filas.map((fila, y) => [y, fila]);
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("shape-rendering", "crispEdges");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("class", "bicho" + (tipo === "cargando" ? " saltando" : ""));
+
+    svg.innerHTML =
+        '<g class="bicho-cuerpo">' +
+        '<g class="bicho-antenas">' + pixeles(numeradas(ANTENAS_BICHO)) + "</g>" +
+        pixeles(numeradas(CUERPO_BICHO)) +
+        '<g class="bicho-abiertos">' + pixeles(cara.abiertos) + "</g>" +
+        '<g class="bicho-cerrados">' + pixeles(cara.cerrados) + "</g>" +
+        pixeles(cara.boca) +
+        "</g>";
+
+    return svg;
+}
+
+/* ==========================================================
+   avatar pixel: 5x5 simétrico generado a partir del usuario.
+   El mismo nombre siempre da el mismo dibujo.
+   ========================================================== */
+
+function hashTexto(texto) {
+    // FNV-1a de 32 bits
+    let hash = 2166136261;
+
+    for (const caracter of String(texto)) {
+        hash ^= caracter.codePointAt(0);
+        hash = Math.imul(hash, 16777619) >>> 0;
     }
 
-    formulario.append(
-        crearSeleccion("rango", "Rango", rangos)
-    );
+    return hash;
+}
 
-    const boton = crearElemento(
-        "button", "postular-button", "REGISTRARME →"
-    );
+function crearAvatar(nombre) {
+    const hash = hashTexto(String(nombre).toLowerCase());
+    const celdas = [];
 
-    boton.type = "submit";
-    formulario.append(boton);
+    // 3 columnas x 5 filas = 15 bits; las columnas 3 y 4 son espejo
+    for (let y = 0; y < 5; y++) {
+        for (let x = 0; x < 3; x++) {
+            const bit = y * 3 + x;
 
-    formulario.addEventListener("submit", async evento => {
-        evento.preventDefault();
-
-        if (procesando) {
-            return;
+            if ((hash >>> bit) & 1) {
+                // algunas celdas en lima, el resto violeta
+                const lima = ((hash >>> (15 + ((bit + y) % 16))) & 3) === 0;
+                celdas.push({ x, y, lima });
+            }
         }
+    }
 
-        procesando = true;
-        boton.disabled = true;
+    // que nunca quede casi vacío
+    if (celdas.length < 5) {
+        celdas.push({ x: 2, y: 1, lima: false }, { x: 2, y: 2, lima: true }, { x: 2, y: 3, lima: false });
+    }
 
-        try {
-            const datos = Object.fromEntries(
-                new FormData(formulario)
-            );
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "-1 -1 7 7");
+    svg.setAttribute("shape-rendering", "crispEdges");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("class", "avatar-pixel");
 
-            await enviarFormulario(
-                "/api/auth/register", datos
-            );
+    let html = '<rect x="-1" y="-1" width="7" height="7" fill="#120d1f"/>';
 
-            await recuperarSesion();
+    celdas.forEach(({ x, y, lima }) => {
+        const color = lima ? "#d6ff5e" : "#a07cff";
+        html += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + color + '"/>';
 
-            notificar(
-                "¡Cuenta creada!",
-                "Tu usuario ya puede postularse a partidas."
-            );
-
-        } catch (error) {
-            notificar(
-                "No se pudo registrar",
-                error.message,
-                "error"
-            );
-
-        } finally {
-            procesando = false;
-            boton.disabled = false;
+        if (x !== 2) {
+            html += '<rect x="' + (4 - x) + '" y="' + y + '" width="1" height="1" fill="' + color + '"/>';
         }
     });
 
-    return formulario;
+    svg.innerHTML = html;
+
+    return svg;
 }
 
-function crearPantallaAcceso() {
-    const { seccion, contenedor } = crearSeccion(
-        "cuenta",
-        "mis-postulaciones-section",
-        "TU CUENTA",
-        "Ingresá para postularte y seguir tus solicitudes."
+/* notificaciones */
+
+function notificar(tipo, titulo, mensaje) {
+    let contenedor = document.getElementById("notificaciones");
+
+    if (!contenedor) {
+        contenedor = crearElemento("div", "notificaciones");
+        contenedor.id = "notificaciones";
+        document.body.append(contenedor);
+    }
+
+    const notificacion = crearElemento("div", "notificacion " + tipo);
+    notificacion.setAttribute("role", tipo === "error" ? "alert" : "status");
+
+    // barra de título tipo ventana de juego
+    const barra = crearElemento("div", "notificacion-barra");
+    barra.append(crearElemento("span", "", tipo === "error" ? "ERROR.EXE" : "LOBBY.EXE"));
+
+    const cerrar = crearElemento("button", "notificacion-cerrar", "X");
+    cerrar.type = "button";
+    cerrar.setAttribute("aria-label", "Cerrar notificación");
+    barra.append(cerrar);
+
+    const cuerpo = crearElemento("div", "notificacion-cuerpo");
+
+    const contenido = crearElemento("div", "notificacion-contenido");
+    contenido.append(
+        crearElemento("strong", "notificacion-titulo", titulo),
+        crearElemento("p", "notificacion-mensaje", mensaje)
     );
 
-    const contenido = crearElemento(
-        "div", "lista-postulaciones"
-    );
+    cuerpo.append(crearBicho(tipo === "error" ? "triste" : "feliz"), contenido);
 
-    contenido.id = "contenidoCuenta";
+    const progreso = crearElemento("div", "notificacion-progreso");
 
-    contenedor.append(contenido);
+    notificacion.append(barra, cuerpo, progreso);
+    contenedor.append(notificacion);
 
-    document.getElementById("partidas")
-        .insertAdjacentElement("afterend", seccion);
+    let cerrada = false;
 
-    const navegacion = document.querySelector(".navigation");
+    function quitar() {
+        if (cerrada) {
+            return;
+        }
 
-    const enlace = crearElemento(
-        "a", "nav-link", "Mi cuenta"
-    );
+        cerrada = true;
+        notificacion.classList.add("saliendo");
+        setTimeout(() => notificacion.remove(), 250);
+    }
 
-    enlace.href = "#cuenta";
-    navegacion.append(enlace);
-
-    mostrarCuenta();
+    cerrar.addEventListener("click", quitar);
+    setTimeout(quitar, 5000);
 }
 
-function mostrarCuenta() {
-    const contenedor = document.getElementById(
-        "contenidoCuenta"
-    );
+/* ==========================================================
+   modo demo (ServidorDemo)
+   Solo ServidorDemo responde "OK" en /health. En ese servidor
+   el acceso y las postulaciones están deshabilitados.
+   ========================================================== */
 
-    if (!usuarioActual) {
-        contenedor.replaceChildren(
-            crearFormularioLogin(),
-            crearFormularioRegistro()
-        );
+async function detectarDemo() {
+    try {
+        const respuesta = await fetch("/health", { cache: "no-store" });
+        const texto = await respuesta.text();
 
+        modoDemo = respuesta.ok && texto.trim() === "OK";
+    } catch (error) {
+        modoDemo = false;
+    }
+}
+
+function aplicarModoDemo() {
+    if (!modoDemo) {
         return;
     }
 
-    const tarjeta = crearElemento(
-        "div", "organizador-card"
-    );
+    document.body.classList.add("modo-demo");
 
-    tarjeta.append(
-        crearElemento(
-            "h3",
-            "organizador-juego",
-            usuarioActual.username
-        ),
+    const aviso = crearElemento("div", "demo-aviso");
+    aviso.append(
+        crearElemento("strong", "", "Demo pública"),
         crearElemento(
             "p",
-            "organizador-jugador",
-            "REGIÓN: " + usuarioActual.region +
-            " · ROL: " + usuarioActual.rol
+            "",
+            "En esta versión podés explorar las partidas. El registro, el login " +
+            "y las postulaciones funcionan en la versión completa."
         )
     );
 
-    const salir = crearElemento(
-        "button",
-        "actualizar-postulaciones",
-        "CERRAR SESIÓN"
+    contenidoCuenta.before(aviso);
+
+    [formLogin, formRegistro].forEach(formulario => {
+        formulario.querySelectorAll("input, select, button").forEach(campo => {
+            campo.disabled = true;
+        });
+    });
+}
+
+/* ==========================================================
+   partidas
+   ========================================================== */
+
+function crearBotonPostular(scrim) {
+    const boton = crearElemento("button", "postular-button");
+    boton.type = "button";
+
+    if (modoDemo) {
+        boton.textContent = "NO DISPONIBLE EN DEMO";
+        boton.disabled = true;
+        return boton;
+    }
+
+    const postulacion = postulaciones.find(p => p.scrimId === scrim.id);
+    const disponible =
+        scrim.estado === "Buscando jugadores" &&
+        scrim.cuposDisponibles > 0;
+
+    if (postulacion) {
+        boton.textContent = postulacion.estado === "Pendiente"
+            ? "POSTULACIÓN ENVIADA"
+            : "SOLICITUD " + String(postulacion.estado).toUpperCase();
+        boton.classList.add("enviado");
+        boton.disabled = true;
+        return boton;
+    }
+
+    if (!disponible) {
+        boton.textContent = "NO DISPONIBLE";
+        boton.disabled = true;
+        return boton;
+    }
+
+    // solo los jugadores pueden postularse (igual que en tu versión)
+    if (usuario && usuario.rol !== "JUGADOR") {
+        boton.textContent = "SOLO JUGADORES";
+        boton.disabled = true;
+        return boton;
+    }
+
+    if (!usuario) {
+        boton.textContent = "INGRESÁ PARA POSTULARTE";
+
+        boton.addEventListener("click", () => {
+            notificar(
+                "error",
+                "Necesitás una cuenta",
+                "Iniciá sesión o registrate para postularte a esta partida."
+            );
+            irA("mi-cuenta");
+            setTimeout(() => document.getElementById("loginEmail")?.focus({ preventScroll: true }), 500);
+        });
+
+        return boton;
+    }
+
+    boton.textContent = "POSTULARME";
+    boton.addEventListener("click", () => postular(scrim, boton));
+
+    return boton;
+}
+
+function crearTarjeta(scrim) {
+    const tarjeta = crearElemento("article", "scrim-card");
+
+    const superior = crearElemento("div", "card-top");
+
+    const icono = crearElemento("div", "game-icon", iconosJuegos[scrim.juego] || "ES");
+
+    const buscando = scrim.estado === "Buscando jugadores";
+
+    const estado = crearElemento(
+        "span",
+        buscando ? "status" : "status other",
+        buscando ? "BUSCANDO" : String(scrim.estado).toUpperCase()
     );
 
-    salir.type = "button";
+    superior.append(icono, estado);
 
-    salir.addEventListener("click", async () => {
-        try {
-            await enviarFormulario(
-                "/api/auth/logout", {}
-            );
+    const titulo = crearElemento("h4", "", nombreJuego(scrim.juego));
 
-            await recuperarSesion();
+    const subtitulo = crearElemento(
+        "p",
+        "card-subtitle",
+        "Partida competitiva · " + scrim.formato
+    );
 
-            notificar(
-                "Sesión cerrada",
-                "Hasta la próxima."
-            );
+    const detalles = crearElemento("div", "card-details");
 
-        } catch (error) {
-            notificar(
-                "Error",
-                error.message,
-                "error"
-            );
+    detalles.append(
+        crearDetalle("Región", scrim.region),
+        crearDetalle("Formato", scrim.formato),
+        crearDetalle("Fecha", formatearFecha(scrim.fecha))
+    );
+
+    const inferior = crearElemento("div", "card-bottom");
+
+    const cupos = crearElemento("div", "cupos");
+
+    const cuposTexto = crearElemento(
+        "span",
+        "cupos-texto",
+        scrim.cuposDisponibles === 1
+            ? "1 cupo disponible"
+            : scrim.cuposDisponibles + " cupos disponibles"
+    );
+
+    // si el servidor manda cuposTotales, se muestran como slots
+    if (Number.isInteger(scrim.cuposTotales) && scrim.cuposTotales > 0) {
+        const slots = crearElemento("div", "cupos-slots");
+        slots.setAttribute("aria-hidden", "true");
+
+        const ocupados = Math.max(0, scrim.cuposTotales - scrim.cuposDisponibles);
+
+        for (let i = 0; i < scrim.cuposTotales; i++) {
+            slots.append(crearElemento("i", i < ocupados ? "ocupado" : ""));
         }
-    });
 
-    tarjeta.append(salir);
+        cuposTexto.textContent =
+            scrim.cuposDisponibles + " de " + scrim.cuposTotales + " cupos libres";
+
+        cupos.append(slots);
+    }
+
+    cupos.append(cuposTexto, crearBotonPostular(scrim));
+
+    const identificador = crearElemento("span", "card-id", "SCRIM #" + scrim.id);
+
+    inferior.append(cupos, identificador);
+
+    tarjeta.append(superior, titulo, subtitulo, detalles, inferior);
+
+    return tarjeta;
+}
+
+// bicho: "feliz", "triste", "cargando" o null para mostrar solo texto
+function mostrarMensaje(contenedor, mensaje, bicho = "triste", detalle) {
+    const tarjeta = crearElemento("div", "message-card");
+
+    if (bicho) {
+        tarjeta.append(crearBicho(bicho));
+    }
+
+    tarjeta.append(crearElemento("p", "", mensaje));
+
+    if (detalle) {
+        tarjeta.append(crearElemento("small", "message-detalle", detalle));
+    }
 
     contenedor.replaceChildren(tarjeta);
 }
 
-function crearPantallaPostulaciones() {
-    const { seccion, contenedor } = crearSeccion(
-        "mis-postulaciones",
-        "mis-postulaciones-section",
-        "MIS POSTULACIONES",
-        "Consultá el estado de tus solicitudes."
-    );
+function actualizarFiltros() {
+    const juegoElegido = filtroJuego.value;
+    const regionElegida = filtroRegion.value;
 
-    const lista = crearElemento(
-        "div", "lista-postulaciones"
-    );
+    const juegos = [...new Set(scrims.map(scrim => scrim.juego))].sort();
+    const regiones = [...new Set(scrims.map(scrim => scrim.region))].sort();
 
-    lista.id = "listaPostulaciones";
+    filtroJuego.replaceChildren(new Option("Todos los juegos", ""));
+    filtroRegion.replaceChildren(new Option("Todas las regiones", ""));
 
-    contenedor.append(lista);
+    juegos.forEach(juego => {
+        filtroJuego.add(new Option(nombreJuego(juego), juego));
+    });
 
-    document.getElementById("cuenta")
-        .insertAdjacentElement("afterend", seccion);
+    regiones.forEach(region => {
+        filtroRegion.add(new Option(region, region));
+    });
 
-    const enlace = crearElemento(
-        "a", "nav-link", "Mis postulaciones"
-    );
-
-    enlace.href = "#mis-postulaciones";
-
-    document.querySelector(".navigation").append(enlace);
-}
-
-function crearPantallaOrganizador() {
-    const { seccion, contenedor } = crearSeccion(
-        "organizador",
-        "organizador-section",
-        "PANEL DEL ORGANIZADOR",
-        "Administrá las solicitudes de los jugadores."
-    );
-
-    const resumen = crearElemento(
-        "div", "organizador-resumen"
-    );
-
-    resumen.id = "resumenOrganizador";
-
-    const lista = crearElemento(
-        "div", "lista-organizador"
-    );
-
-    lista.id = "listaOrganizador";
-
-    contenedor.append(resumen, lista);
-
-    document.getElementById("mis-postulaciones")
-        .insertAdjacentElement("afterend", seccion);
-
-    const enlace = crearElemento(
-        "a", "nav-link", "Organizador"
-    );
-
-    enlace.id = "enlaceOrganizador";
-    enlace.href = "#organizador";
-
-    document.querySelector(".navigation").append(enlace);
-
-    seccion.hidden = true;
-    enlace.hidden = true;
-}
-
-function mostrarAccesos() {
-    const esOrganizador = usuarioActual &&
-        usuarioActual.rol === "ORGANIZADOR";
-
-    document.getElementById("organizador").hidden =
-        !esOrganizador;
-
-    document.getElementById(
-        "enlaceOrganizador"
-    ).hidden = !esOrganizador;
-
-    mostrarCuenta();
-}
-
-async function recuperarSesion() {
-    const datos = await solicitar("/api/auth/me");
-
-    usuarioActual = datos.autenticado ? datos : null;
-
-    mostrarAccesos();
-
-    await actualizarTodo();
-}
-
-function crearTarjeta(scrim) {
-    const tarjeta = crearElemento(
-        "article", "scrim-card"
-    );
-
-    const superior = crearElemento("div", "card-top");
-
-    superior.append(
-        crearElemento(
-            "div", "game-icon",
-            iconosJuegos[scrim.juego] || "ES"
-        ),
-        crearElemento(
-            "span",
-            scrim.estado === "Buscando jugadores"
-                ? "status"
-                : "status other",
-            scrim.estado === "Buscando jugadores"
-                ? "BUSCANDO"
-                : scrim.estado.toUpperCase()
-        )
-    );
-
-    const titulo = crearElemento(
-        "h4", "", nombreJuego(scrim.juego)
-    );
-
-    const subtitulo = crearElemento(
-        "p", "card-subtitle",
-        "Partida competitiva · " + scrim.formato
-    );
-
-    const detalles = crearElemento(
-        "div", "card-details"
-    );
-
-    detalles.append(
-        detalle("Región", scrim.region),
-        detalle("Formato", scrim.formato),
-        detalle("Fecha", formatearFecha(scrim.fecha))
-    );
-
-    const inferior = crearElemento(
-        "div", "card-bottom"
-    );
-
-    const acciones = crearElemento("div", "cupos");
-
-    acciones.append(
-        crearElemento(
-            "span", "cupos-texto",
-            scrim.cuposDisponibles + " cupos disponibles"
-        )
-    );
-
-    const boton = crearElemento(
-        "button", "postular-button", "POSTULARME →"
-    );
-
-    boton.type = "button";
-
-    const postulacion = misPostulaciones.find(
-        p => p.scrimId === scrim.id
-    );
-
-    if (!usuarioActual) {
-        boton.textContent = "INICIAR SESIÓN →";
-
-        boton.addEventListener("click", () => {
-            location.hash = "#cuenta";
-        });
-
-    } else if (usuarioActual.rol !== "JUGADOR") {
-        boton.disabled = true;
-        boton.textContent = "SOLO JUGADORES";
-
-    } else if (postulacion) {
-        boton.disabled = true;
-        boton.classList.add("enviado");
-
-        boton.textContent = postulacion.estado === "Pendiente"
-            ? "POSTULACIÓN ENVIADA"
-            : "SOLICITUD " + postulacion.estado.toUpperCase();
-
-    } else if (
-        scrim.estado !== "Buscando jugadores" ||
-        scrim.cuposDisponibles <= 0
-    ) {
-        boton.disabled = true;
-        boton.textContent = "NO DISPONIBLE";
-
-    } else {
-        boton.addEventListener("click", async () => {
-            boton.disabled = true;
-            boton.textContent = "ENVIANDO...";
-
-            try {
-                await enviarFormulario(
-                    "/api/postulaciones",
-                    { scrimId: scrim.id }
-                );
-
-                notificar(
-                    "¡Postulación enviada!",
-                    "Tu solicitud quedó pendiente."
-                );
-
-                await actualizarTodo();
-
-            } catch (error) {
-                notificar(
-                    "No se pudo postular",
-                    error.message,
-                    "error"
-                );
-
-                boton.disabled = false;
-                boton.textContent = "POSTULARME →";
-            }
-        });
+    // conservar lo que el usuario tenía elegido al recargar
+    if (juegos.includes(juegoElegido)) {
+        filtroJuego.value = juegoElegido;
     }
 
-    acciones.append(boton);
+    if (regiones.includes(regionElegida)) {
+        filtroRegion.value = regionElegida;
+    }
+}
 
-    inferior.append(
-        acciones,
-        crearElemento(
-            "span", "card-id",
-            "SCRIM #" + scrim.id
-        )
+function mostrarScrims() {
+    if (!scrimsCargadas) {
+        return;
+    }
+
+    const texto = busqueda.value.trim().toLowerCase();
+    const juego = filtroJuego.value;
+    const region = filtroRegion.value;
+
+    const filtrados = scrims.filter(scrim => {
+        const coincideTexto =
+            nombreJuego(scrim.juego).toLowerCase().includes(texto) ||
+            scrim.juego.toLowerCase().includes(texto);
+
+        const coincideJuego = !juego || scrim.juego === juego;
+        const coincideRegion = !region || scrim.region === region;
+
+        return coincideTexto && coincideJuego && coincideRegion;
+    });
+
+    contador.textContent =
+        filtrados.length === 1 ? "1 partida" : filtrados.length + " partidas";
+
+    estadoCarga.textContent = "Datos del servidor eScrims";
+
+    if (filtrados.length === 0) {
+        mostrarMensaje(
+            listaScrims,
+            "No encontramos partidas con esos filtros.",
+            "triste",
+            "PROBÁ OTRO JUEGO O REGIÓN"
+        );
+        return;
+    }
+
+    listaScrims.replaceChildren(...filtrados.map(crearTarjeta));
+}
+
+async function cargarScrims() {
+    estadoCarga.textContent = "Cargando partidas...";
+
+    // la primera vez se muestra la mascota saltando
+    if (!scrimsCargadas) {
+        mostrarMensaje(listaScrims, "Cargando partidas", "cargando");
+        listaScrims.querySelector(".message-card p").classList.add("puntos");
+    }
+
+    try {
+        const datos = await api("/api/scrims");
+
+        if (!Array.isArray(datos)) {
+            throw new Error("Respuesta inesperada del servidor");
+        }
+
+        scrims = datos;
+        scrimsCargadas = true;
+
+        actualizarFiltros();
+        mostrarScrims();
+
+    } catch (error) {
+        console.error("No se pudieron cargar las partidas:", error);
+
+        contador.textContent = "Sin conexión";
+        estadoCarga.textContent = "Error de conexión";
+
+        mostrarMensaje(
+            listaScrims,
+            "No se pudieron cargar las partidas.",
+            "triste",
+            "COMPROBÁ QUE EL SERVIDOR JAVA ESTÉ CORRIENDO"
+        );
+    }
+}
+
+async function postular(scrim, boton) {
+    boton.disabled = true;
+    boton.textContent = "ENVIANDO...";
+
+    try {
+        await enviarFormulario("/api/postulaciones", { scrimId: scrim.id });
+
+        notificar(
+            "exito",
+            "Postulación enviada",
+            "Te postulaste a " + nombreJuego(scrim.juego) + " · " +
+            scrim.formato + " · " + scrim.region + ". El organizador la va a revisar."
+        );
+
+        await cargarPostulaciones();
+        await cargarOrganizador();
+        await cargarScrims();
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        notificar("error", "No se pudo postular", error.message);
+
+        boton.disabled = false;
+        boton.textContent = "POSTULARME";
+    }
+}
+
+/* ==========================================================
+   cuenta
+   ========================================================== */
+
+function actualizarVistaCuenta() {
+    const conSesion = usuario !== null;
+    const esOrganizador = conSesion && usuario.rol === "ORGANIZADOR";
+
+    contenidoCuenta.hidden = conSesion;
+    perfilCuenta.hidden = !conSesion;
+
+    seccionPostulaciones.hidden = !conSesion;
+    navPostulaciones.hidden = !conSesion;
+
+    seccionOrganizador.hidden = !esOrganizador;
+    navOrganizador.hidden = !esOrganizador;
+
+    if (conSesion) {
+        cuentaDescripcion.textContent =
+            "Sesión iniciada. Ya podés postularte desde la lista de partidas.";
+
+        document.getElementById("perfilInicial").replaceChildren(
+            crearAvatar(usuario.username)
+        );
+        document.getElementById("perfilNombre").textContent = usuario.username;
+        document.getElementById("perfilRegion").textContent = usuario.region || "—";
+        document.getElementById("perfilRol").textContent =
+            usuario.rol === "ORGANIZADOR" ? "Organizador" : "Jugador";
+        document.getElementById("perfilId").textContent = "#" + usuario.id;
+    } else {
+        cuentaDescripcion.textContent = modoDemo
+            ? "El acceso está deshabilitado en la demo pública."
+            : "Iniciá sesión o creá una cuenta para postularte a partidas.";
+        postulaciones = [];
+        listaPostulaciones.replaceChildren();
+        listaOrganizador.replaceChildren();
+    }
+
+    mostrarScrims();
+    actualizarIndicador();
+}
+
+async function cargarSesion() {
+    try {
+        const datos = await api("/api/auth/me");
+        usuario = datos && datos.autenticado ? datos : null;
+    } catch (error) {
+        usuario = null;
+    }
+
+    actualizarVistaCuenta();
+
+    if (usuario) {
+        await cargarDatosDeUsuario();
+    }
+}
+
+async function cargarDatosDeUsuario() {
+    await cargarPostulaciones();
+
+    if (usuario && usuario.rol === "ORGANIZADOR") {
+        await cargarOrganizador();
+    }
+}
+
+function sesionVencida() {
+    usuario = null;
+    actualizarVistaCuenta();
+
+    notificar(
+        "error",
+        "Sesión vencida",
+        "Volvé a iniciar sesión para continuar."
+    );
+}
+
+async function enviarAcceso(evento, url, esRegistro) {
+    evento.preventDefault();
+
+    if (modoDemo) {
+        return;
+    }
+
+    const formulario = evento.currentTarget;
+    const boton = formulario.querySelector("button[type='submit']");
+    const datos = Object.fromEntries(new FormData(formulario));
+
+    const faltantes = [...formulario.querySelectorAll("[required]")]
+        .filter(campo => !String(campo.value).trim());
+
+    if (faltantes.length > 0) {
+        notificar("error", "Faltan datos", "Completá todos los campos.");
+        faltantes[0].focus();
+        return;
+    }
+
+    const contrasena = formulario.querySelector("[name='password']");
+
+    if (contrasena && contrasena.value.length < 8) {
+        notificar(
+            "error",
+            "Contraseña muy corta",
+            "La contraseña tiene que tener al menos 8 caracteres."
+        );
+        contrasena.focus();
+        return;
+    }
+
+    const textoBoton = boton.textContent;
+    boton.disabled = true;
+    boton.textContent = "ENVIANDO...";
+
+    try {
+        usuario = await enviarFormulario(url, datos);
+
+        notificar(
+            "exito",
+            esRegistro ? "Cuenta creada" : "Sesión iniciada",
+            "Hola, " + usuario.username + ". Ya podés postularte a partidas."
+        );
+
+        formLogin.reset();
+        formRegistro.reset();
+
+        actualizarVistaCuenta();
+        await cargarDatosDeUsuario();
+
+    } catch (error) {
+        notificar(
+            "error",
+            esRegistro ? "No se pudo crear la cuenta" : "No se pudo iniciar sesión",
+            error.message
+        );
+
+    } finally {
+        boton.disabled = false;
+        boton.textContent = textoBoton;
+    }
+}
+
+async function cerrarSesion() {
+    cerrarSesionBoton.disabled = true;
+
+    try {
+        await enviarFormulario("/api/auth/logout", {});
+    } catch (error) {
+        console.error("Error al cerrar sesión:", error);
+    }
+
+    cerrarSesionBoton.disabled = false;
+    usuario = null;
+    actualizarVistaCuenta();
+
+    notificar("exito", "Sesión cerrada", "Hasta la próxima partida.");
+}
+
+/* ==========================================================
+   mis postulaciones
+   ========================================================== */
+
+function crearPostulacion(postulacion) {
+    const tarjeta = crearElemento("article", "postulacion-card");
+    const clase = claseEstado(postulacion.estado);
+
+    const cabecera = crearElemento("div", "postulacion-cabecera");
+
+    const titulo = crearElemento("div");
+    titulo.append(
+        crearElemento("span", "postulacion-id", "POSTULACIÓN #" + postulacion.id),
+        crearElemento("h4", "postulacion-juego", nombreJuego(postulacion.juego))
     );
 
+    const estado = crearElemento(
+        "span",
+        "postulacion-estado " + clase,
+        String(postulacion.estado).toUpperCase()
+    );
+
+    cabecera.append(titulo, estado);
+
+    const detalles = crearElemento("div", "postulacion-detalles");
+    detalles.append(
+        crearDetalle("Scrim", "#" + postulacion.scrimId),
+        crearDetalle("Región", postulacion.region),
+        crearDetalle("Formato", postulacion.formato),
+        crearDetalle("Fecha", formatearFecha(postulacion.fecha))
+    );
+
+    const mensajes = {
+        pendiente: "El organizador todavía no revisó tu solicitud.",
+        aceptada: "¡Estás adentro! Te esperamos en el lobby.",
+        rechazada: "Esta vez no quedaste. Probá con otra partida."
+    };
+
     tarjeta.append(
-        superior, titulo, subtitulo,
-        detalles, inferior
+        cabecera,
+        detalles,
+        crearElemento("p", "postulacion-mensaje", mensajes[clase])
     );
 
     return tarjeta;
 }
 
-function mostrarScrims() {
-    const texto = busqueda.value.trim().toLowerCase();
-
-    const filtrados = scrims.filter(scrim => {
-        const coincideTexto = nombreJuego(scrim.juego)
-            .toLowerCase().includes(texto);
-
-        const coincideJuego =
-            !filtroJuego.value ||
-            filtroJuego.value === scrim.juego;
-
-        const coincideRegion =
-            !filtroRegion.value ||
-            filtroRegion.value === scrim.region;
-
-        return coincideTexto &&
-            coincideJuego &&
-            coincideRegion;
-    });
-
-    contador.textContent = filtrados.length + " partidas";
-    estadoCarga.textContent = "Datos del servidor eScrims";
-
-    if (filtrados.length === 0) {
-        listaScrims.replaceChildren(
-            crearElemento(
-                "div", "message-card",
-                "No encontramos partidas con esos filtros."
-            )
-        );
+async function cargarPostulaciones() {
+    if (!usuario) {
         return;
     }
 
-    listaScrims.replaceChildren(
-        ...filtrados.map(crearTarjeta)
-    );
-}
-
-function actualizarFiltros() {
-    const juegoAnterior = filtroJuego.value;
-    const regionAnterior = filtroRegion.value;
-
-    filtroJuego.replaceChildren(
-        new Option("Todos los juegos", "")
-    );
-
-    filtroRegion.replaceChildren(
-        new Option("Todas las regiones", "")
-    );
-
-    [...new Set(scrims.map(s => s.juego))]
-        .sort()
-        .forEach(juego => {
-            filtroJuego.add(
-                new Option(nombreJuego(juego), juego)
-            );
-        });
-
-    [...new Set(scrims.map(s => s.region))]
-        .sort()
-        .forEach(region => {
-            filtroRegion.add(
-                new Option(region, region)
-            );
-        });
-
-    filtroJuego.value = juegoAnterior;
-    filtroRegion.value = regionAnterior;
-}
-
-function mostrarPostulaciones() {
-    const lista = document.getElementById(
-        "listaPostulaciones"
-    );
-
-    if (!usuarioActual) {
-        lista.replaceChildren(
-            crearElemento(
-                "div", "message-card",
-                "Iniciá sesión para consultar tus postulaciones."
-            )
-        );
-        return;
-    }
-
-    if (misPostulaciones.length === 0) {
-        lista.replaceChildren(
-            crearElemento(
-                "div", "message-card",
-                "Todavía no tenés postulaciones."
-            )
-        );
-        return;
-    }
-
-    lista.replaceChildren(
-        ...misPostulaciones.map(p => {
-            const tarjeta = crearElemento(
-                "article", "postulacion-card"
-            );
-
-            const cabecera = crearElemento(
-                "div", "postulacion-cabecera"
-            );
-
-            const informacion = crearElemento("div");
-
-            informacion.append(
-                crearElemento(
-                    "span", "postulacion-id",
-                    "SOLICITUD #" + p.id
-                ),
-                crearElemento(
-                    "h3", "postulacion-juego",
-                    nombreJuego(p.juego)
-                )
-            );
-
-            cabecera.append(
-                informacion,
-                estadoEtiqueta(p.estado)
-            );
-
-            const detalles = crearElemento(
-                "div", "postulacion-detalles"
-            );
-
-            detalles.append(
-                detalle("Partida", "#" + p.scrimId),
-                detalle("Formato", p.formato),
-                detalle("Región", p.region),
-                detalle("Fecha", formatearFecha(p.fecha))
-            );
-
-            tarjeta.append(
-                cabecera,
-                detalles,
-                crearElemento(
-                    "p", "postulacion-mensaje",
-                    p.estado === "Pendiente"
-                        ? "Esperando aprobación del organizador."
-                        : "Solicitud " +
-                        p.estado.toLowerCase() + "."
-                )
-            );
-
-            return tarjeta;
-        })
-    );
-}
-
-function resumenOrganizador() {
-    const contenedor = document.getElementById(
-        "resumenOrganizador"
-    );
-
-    const estados = [
-        "Pendiente",
-        "Aceptada",
-        "Rechazada"
-    ];
-
-    contenedor.replaceChildren(
-        ...estados.map(estado => {
-            const tarjeta = crearElemento(
-                "div", "organizador-resumen-item"
-            );
-
-            const cantidad = postulacionesOrganizador.filter(
-                p => p.estado === estado
-            ).length;
-
-            tarjeta.append(
-                crearElemento(
-                    "strong", "", String(cantidad)
-                ),
-                crearElemento(
-                    "span", "", estado + "s"
-                )
-            );
-
-            return tarjeta;
-        })
-    );
-}
-
-function mostrarOrganizador() {
-    const lista = document.getElementById(
-        "listaOrganizador"
-    );
-
-    resumenOrganizador();
-
-    if (postulacionesOrganizador.length === 0) {
-        lista.replaceChildren(
-            crearElemento(
-                "div", "message-card",
-                "No hay solicitudes para revisar."
-            )
-        );
-        return;
-    }
-
-    lista.replaceChildren(
-        ...postulacionesOrganizador.map(p => {
-            const tarjeta = crearElemento(
-                "article", "organizador-card"
-            );
-
-            const cabecera = crearElemento(
-                "div", "organizador-card-cabecera"
-            );
-
-            const informacion = crearElemento("div");
-
-            informacion.append(
-                crearElemento(
-                    "span", "postulacion-id",
-                    "SOLICITUD #" + p.id
-                ),
-                crearElemento(
-                    "h3", "organizador-juego",
-                    nombreJuego(p.juego)
-                ),
-                crearElemento(
-                    "p", "organizador-jugador",
-                    p.usuario + " · SCRIM #" + p.scrimId
-                )
-            );
-
-            cabecera.append(
-                informacion,
-                estadoEtiqueta(p.estado)
-            );
-
-            const detalles = crearElemento(
-                "div", "organizador-card-detalles"
-            );
-
-            detalles.append(
-                detalle("Formato", p.formato),
-                detalle("Región", p.region),
-                detalle("Fecha", formatearFecha(p.fecha))
-            );
-
-            tarjeta.append(cabecera, detalles);
-
-            if (p.estado === "Pendiente") {
-                const acciones = crearElemento(
-                    "div", "organizador-card-acciones"
-                );
-
-                for (const accion of ["aceptar", "rechazar"]) {
-                    const boton = crearElemento(
-                        "button",
-                        "organizador-" + accion,
-                        accion.toUpperCase()
-                    );
-
-                    boton.type = "button";
-
-                    boton.addEventListener(
-                        "click", async () => {
-                            if (procesando) {
-                                return;
-                            }
-
-                            procesando = true;
-                            boton.disabled = true;
-
-                            try {
-                                await enviarFormulario(
-                                    "/api/organizador/postulaciones",
-                                    {
-                                        postulacionId: p.id,
-                                        accion
-                                    }
-                                );
-
-                                notificar(
-                                    "Solicitud procesada",
-                                    "El estado fue actualizado."
-                                );
-
-                                await actualizarTodo();
-
-                            } catch (error) {
-                                notificar(
-                                    "Error",
-                                    error.message,
-                                    "error"
-                                );
-
-                            } finally {
-                                procesando = false;
-                                boton.disabled = false;
-                            }
-                        }
-                    );
-
-                    acciones.append(boton);
-                }
-
-                tarjeta.append(acciones);
-            }
-
-            lista.append(tarjeta);
-            return tarjeta;
-        })
-    );
-}
-
-async function actualizarTodo() {
     try {
-        scrims = await solicitar("/api/scrims");
+        const datos = await api("/api/postulaciones");
+        postulaciones = Array.isArray(datos) ? datos : [];
 
-        misPostulaciones = [];
-        postulacionesOrganizador = [];
-
-        if (usuarioActual) {
-            misPostulaciones = await solicitar(
-                "/api/postulaciones"
+        if (postulaciones.length === 0) {
+            mostrarMensaje(
+                listaPostulaciones,
+                "Todavía no te postulaste a ninguna partida."
             );
-
-            if (usuarioActual.rol === "ORGANIZADOR") {
-                postulacionesOrganizador = await solicitar(
-                    "/api/organizador/postulaciones"
-                );
-            }
+        } else {
+            listaPostulaciones.replaceChildren(
+                ...postulaciones.map(crearPostulacion)
+            );
         }
 
-        actualizarFiltros();
         mostrarScrims();
-        mostrarPostulaciones();
-        mostrarOrganizador();
 
     } catch (error) {
-        console.error(error);
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
 
-        notificar(
-            "Error de conexión",
-            error.message,
-            "error"
-        );
+        mostrarMensaje(listaPostulaciones, "No se pudieron cargar tus postulaciones.");
     }
 }
+
+/* ==========================================================
+   panel organizador
+   ========================================================== */
+
+function crearSolicitud(solicitud) {
+    const tarjeta = crearElemento("article", "organizador-card");
+    const clase = claseEstado(solicitud.estado);
+
+    const cabecera = crearElemento("div", "organizador-card-cabecera");
+
+    const titulo = crearElemento("div");
+    titulo.append(
+        crearElemento("span", "postulacion-id", "SOLICITUD #" + solicitud.id + " · SCRIM #" + solicitud.scrimId),
+        crearElemento("h4", "organizador-juego", nombreJuego(solicitud.juego)),
+        (() => {
+            const jugador = crearElemento("p", "organizador-jugador");
+            jugador.append(
+                crearAvatar(solicitud.usuario),
+                document.createTextNode("Jugador: " + solicitud.usuario)
+            );
+            return jugador;
+        })()
+    );
+
+    cabecera.append(
+        titulo,
+        crearElemento(
+            "span",
+            "postulacion-estado " + clase,
+            String(solicitud.estado).toUpperCase()
+        )
+    );
+
+    const detalles = crearElemento("div", "organizador-card-detalles");
+    detalles.append(
+        crearDetalle("Región", solicitud.region),
+        crearDetalle("Formato", solicitud.formato),
+        crearDetalle("Fecha", formatearFecha(solicitud.fecha))
+    );
+
+    tarjeta.append(cabecera, detalles);
+
+    if (clase === "pendiente") {
+        const acciones = crearElemento("div", "organizador-card-acciones");
+
+        const aceptar = crearElemento("button", "organizador-aceptar", "ACEPTAR");
+        aceptar.type = "button";
+
+        const rechazar = crearElemento("button", "organizador-rechazar", "RECHAZAR");
+        rechazar.type = "button";
+
+        aceptar.addEventListener("click", () =>
+            gestionarSolicitud(solicitud, "aceptar", [aceptar, rechazar])
+        );
+
+        rechazar.addEventListener("click", () =>
+            gestionarSolicitud(solicitud, "rechazar", [aceptar, rechazar])
+        );
+
+        acciones.append(aceptar, rechazar);
+        tarjeta.append(acciones);
+
+    } else {
+        tarjeta.append(
+            crearElemento(
+                "p",
+                "organizador-resuelto",
+                "Solicitud resuelta: " + String(solicitud.estado).toLowerCase() + "."
+            )
+        );
+    }
+
+    return tarjeta;
+}
+
+async function cargarOrganizador() {
+    if (!usuario || usuario.rol !== "ORGANIZADOR") {
+        return;
+    }
+
+    try {
+        const datos = await api("/api/organizador/postulaciones");
+        const solicitudes = Array.isArray(datos) ? datos : [];
+
+        const contar = clase =>
+            solicitudes.filter(s => claseEstado(s.estado) === clase).length;
+
+        document.getElementById("resumenPendientes").textContent = contar("pendiente");
+        document.getElementById("resumenAceptadas").textContent = contar("aceptada");
+        document.getElementById("resumenRechazadas").textContent = contar("rechazada");
+
+        if (solicitudes.length === 0) {
+            mostrarMensaje(listaOrganizador, "Todavía no llegaron solicitudes.", "feliz");
+            return;
+        }
+
+        // pendientes primero
+        solicitudes.sort((a, b) =>
+            (claseEstado(a.estado) === "pendiente" ? 0 : 1) -
+            (claseEstado(b.estado) === "pendiente" ? 0 : 1)
+        );
+
+        listaOrganizador.replaceChildren(...solicitudes.map(crearSolicitud));
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        mostrarMensaje(listaOrganizador, "No se pudieron cargar las solicitudes.");
+    }
+}
+
+async function gestionarSolicitud(solicitud, accion, botones) {
+    botones.forEach(boton => {
+        boton.disabled = true;
+    });
+
+    try {
+        await enviarFormulario("/api/organizador/postulaciones", {
+            postulacionId: solicitud.id,
+            accion
+        });
+
+        notificar(
+            "exito",
+            accion === "aceptar" ? "Jugador aceptado" : "Solicitud rechazada",
+            solicitud.usuario + " · " + nombreJuego(solicitud.juego)
+        );
+
+        await cargarOrganizador();
+        await cargarPostulaciones();
+        await cargarScrims();
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        notificar("error", "No se pudo procesar", error.message);
+
+        botones.forEach(boton => {
+            boton.disabled = false;
+        });
+    }
+}
+
+/* ==========================================================
+   indicador de sección
+   ========================================================== */
+
+const header = document.querySelector(".header");
+const indicador = document.querySelector(".section-indicator");
+const enlacesNav = [...document.querySelectorAll(".nav-link")];
+
+let seccionActual = null;
+let temporizadorIndicador;
+let indicadorPendiente = false;
+
+function seccionesVisibles() {
+    return [...document.querySelectorAll("[data-seccion]")]
+        .filter(seccion => !seccion.hidden && seccion.offsetParent !== null);
+}
+
+function marcarEnlace(id) {
+    enlacesNav.forEach(enlace => {
+        const activo = enlace.getAttribute("href") === "#" + id;
+
+        enlace.classList.toggle("active", activo);
+
+        if (activo) {
+            enlace.setAttribute("aria-current", "location");
+
+            // en celular el menú se desliza: llevar el link activo a la vista
+            const menu = enlace.parentElement;
+
+            if (menu.scrollWidth > menu.clientWidth) {
+                menu.scrollTo({ left: enlace.offsetLeft - 16, behavior: "smooth" });
+            }
+        } else {
+            enlace.removeAttribute("aria-current");
+        }
+    });
+}
+
+function escribirIndicador(seccion) {
+    indicador.querySelector(".indicator-round").textContent = seccion.dataset.ronda || "";
+    indicador.querySelector(".indicator-label").textContent = seccion.dataset.seccion;
+}
+
+function mostrarSeccion(seccion) {
+    if (seccion === seccionActual) {
+        return;
+    }
+
+    const primeraVez = seccionActual === null;
+    seccionActual = seccion;
+    marcarEnlace(seccion.id);
+
+    if (primeraVez) {
+        escribirIndicador(seccion);
+        return;
+    }
+
+    clearTimeout(temporizadorIndicador);
+    indicador.classList.add("saliendo");
+
+    temporizadorIndicador = setTimeout(() => {
+        escribirIndicador(seccion);
+        indicador.classList.remove("saliendo");
+        indicador.classList.add("entrando");
+        void indicador.offsetWidth;
+        indicador.classList.remove("entrando");
+    }, 180);
+}
+
+function actualizarIndicador() {
+    if (!header || !indicador) {
+        return;
+    }
+
+    const secciones = seccionesVisibles();
+
+    if (secciones.length === 0) {
+        return;
+    }
+
+    // la sección activa es la última que pasó el 40% de la pantalla
+    const linea = window.innerHeight * 0.4;
+    let elegida = secciones[0];
+
+    secciones.forEach(seccion => {
+        if (seccion.getBoundingClientRect().top <= linea) {
+            elegida = seccion;
+        }
+    });
+
+    const alto = document.documentElement.scrollHeight;
+
+    if (window.innerHeight + window.scrollY >= alto - 2) {
+        elegida = secciones[secciones.length - 1];
+    }
+
+    mostrarSeccion(elegida);
+
+    const recorrido = alto - window.innerHeight;
+    const progreso = recorrido > 0 ? window.scrollY / recorrido : 0;
+    header.style.setProperty("--progreso", progreso.toFixed(4));
+}
+
+window.addEventListener("scroll", () => {
+    if (indicadorPendiente) {
+        return;
+    }
+
+    indicadorPendiente = true;
+
+    requestAnimationFrame(() => {
+        indicadorPendiente = false;
+        actualizarIndicador();
+    });
+}, { passive: true });
+
+window.addEventListener("resize", actualizarIndicador);
+
+/* ==========================================================
+   terminal de "Cómo funciona": se anima al entrar en pantalla
+   ========================================================== */
+
+function animarTerminal() {
+    const terminal = document.querySelector(".workflow-terminal");
+
+    if (!terminal) {
+        return;
+    }
+
+    const contadorTerminal = terminal.querySelector(".workflow-progress-info strong");
+    const objetivo = 7;
+
+    function arrancar() {
+        terminal.classList.add("visible");
+
+        if (!contadorTerminal || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            return;
+        }
+
+        let actual = 0;
+        contadorTerminal.textContent = "0 / 10";
+
+        const intervalo = setInterval(() => {
+            actual++;
+            contadorTerminal.textContent = actual + " / 10";
+
+            if (actual >= objetivo) {
+                clearInterval(intervalo);
+            }
+        }, 1400 / objetivo);
+    }
+
+    if (!("IntersectionObserver" in window)) {
+        arrancar();
+        return;
+    }
+
+    const observador = new IntersectionObserver(entradas => {
+        if (entradas.some(entrada => entrada.isIntersecting)) {
+            observador.disconnect();
+            setTimeout(arrancar, 200);
+        }
+    }, { threshold: 0.4 });
+
+    observador.observe(terminal);
+}
+
+/* ==========================================================
+   easter egg: ↑ ↑ ↓ ↓ ← → ← → B A
+   ========================================================== */
+
+function activarKonami() {
+    const secuencia = [
+        "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown",
+        "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight",
+        "b", "a"
+    ];
+
+    let posicion = 0;
+    let enCurso = false;
+
+    document.addEventListener("keydown", evento => {
+        // no interferir mientras se escribe en un formulario
+        if (evento.target.closest("input, select, textarea")) {
+            posicion = 0;
+            return;
+        }
+
+        const tecla = evento.key.length === 1 ? evento.key.toLowerCase() : evento.key;
+
+        if (tecla === secuencia[posicion]) {
+            posicion++;
+        } else {
+            posicion = tecla === secuencia[0] ? 1 : 0;
+        }
+
+        if (posicion === secuencia.length) {
+            posicion = 0;
+
+            if (!enCurso) {
+                enCurso = true;
+                lanzarKonami(() => {
+                    enCurso = false;
+                });
+            }
+        }
+    });
+}
+
+function lanzarKonami(alTerminar) {
+    const escena = crearElemento("div", "konami");
+    escena.setAttribute("aria-hidden", "true");
+
+    const corredor = crearBicho("cargando");
+    corredor.classList.add("konami-bicho");
+
+    escena.append(
+        crearElemento("span", "konami-gg", "GG!"),
+        corredor
+    );
+
+    document.body.append(escena);
+
+    setTimeout(() => {
+        escena.remove();
+        alTerminar();
+    }, 3200);
+}
+
+/* ==========================================================
+   eventos e inicio
+   ========================================================== */
 
 busqueda.addEventListener("input", mostrarScrims);
 filtroJuego.addEventListener("change", mostrarScrims);
@@ -1080,25 +1326,30 @@ limpiarFiltros.addEventListener("click", () => {
     busqueda.value = "";
     filtroJuego.value = "";
     filtroRegion.value = "";
+
     mostrarScrims();
 });
 
-async function iniciarAplicacion() {
-    crearPantallaAcceso();
-    crearPantallaPostulaciones();
-    crearPantallaOrganizador();
+formLogin.addEventListener("submit", evento =>
+    enviarAcceso(evento, "/api/auth/login", false)
+);
 
-    try {
-        await recuperarSesion();
-    } catch (error) {
-        console.error(error);
+formRegistro.addEventListener("submit", evento =>
+    enviarAcceso(evento, "/api/auth/register", true)
+);
 
-        notificar(
-            "No se pudo conectar",
-            "Comprobá que el servidor Java esté funcionando.",
-            "error"
-        );
-    }
-}
+cerrarSesionBoton.addEventListener("click", cerrarSesion);
+actualizarPostulacionesBoton.addEventListener("click", cargarPostulaciones);
+actualizarOrganizadorBoton.addEventListener("click", cargarOrganizador);
 
-iniciarAplicacion();
+actualizarIndicador();
+animarTerminal();
+activarKonami();
+
+(async function iniciar() {
+    await detectarDemo();
+    aplicarModoDemo();
+    await cargarSesion();
+    await cargarScrims();
+    actualizarIndicador();
+})();
