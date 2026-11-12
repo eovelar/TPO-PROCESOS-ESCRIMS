@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#111016">
+
+    <title>eScrims | Encontrá tu próxima partida</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111016'/%3E%3Cpath d='M6 9h8v14H6M14 16h6' fill='none' stroke='%23a07cff' stroke-width='2.6' stroke-linecap='square'/%3E%3Ccircle cx='24' cy='16' r='3.4' fill='%23d6ff5e'/%3E%3C/svg%3E">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+</head>
+
+<body>
+
+<header class="header">
+    <div class="container header-content">
+
+        <a href="/" class="logo">
+            eScrims<span>_</span>
+        </a>
+
+        <nav class="navigation" aria-label="Navegación principal">
+            <a href="#partidas" class="nav-link">Explorar</a>
+            <a href="#como-funciona" class="nav-link">Cómo funciona</a>
+            <a href="#mi-cuenta" class="nav-link" id="navCuenta">Mi cuenta</a>
+            <a href="#mis-postulaciones" class="nav-link" id="navPostulaciones" hidden>Mis postulaciones</a>
+            <a href="#organizador" class="nav-link" id="navOrganizador" hidden>Organizador</a>
+        </nav>
+
+        <div class="section-indicator" aria-hidden="true">
+            <span class="indicator-round">00</span>
+            <span class="indicator-label">Inicio</span>
+        </div>
+    </div>
+</header>
+
+<main>
+
+    <!-- inicio -->
+
+    <section class="hero" id="inicio" data-ronda="00" data-seccion="Inicio">
+        <div class="container hero-content">
+
+            <div class="hero-text">
+
+                <h1>
+                    Encontrá tu<br>
+                    próxima <em class="glitch" data-text="partida.">partida.</em>
+                </h1>
+
+                <p class="hero-lead">
+                    Conectá con jugadores de tu nivel,
+                    descubrí scrims competitivas y llevá
+                    tu equipo al siguiente nivel.
+                </p>
+
+                <div class="hero-actions">
+
+                    <span class="cta-stickers">
+                        <a href="#partidas" class="primary-button">
+                            Explorar partidas
+                            <span aria-hidden="true">→</span>
+                        </a>
+
+                        <svg class="sticker sticker-cursor" viewBox="0 0 12 18" shape-rendering="crispEdges" aria-hidden="true">
+                            <path fill="#120d1f" d="M0 0h1v1H0zM0 1h2v1H0zM0 2h1v1H0zM2 2h1v1H2zM0 3h1v1H0zM3 3h1v1H3zM0 4h1v1H0zM4 4h1v1H4zM0 5h1v1H0zM5 5h1v1H5zM0 6h1v1H0zM6 6h1v1H6zM0 7h1v1H0zM7 7h1v1H7zM0 8h1v1H0zM8 8h1v1H8zM0 9h1v1H0zM9 9h1v1H9zM0 10h1v1H0zM6 10h4v1H6zM0 11h1v1H0zM3 11h1v1H3zM6 11h1v1H6zM0 12h1v1H0zM2 12h1v1H2zM4 12h1v1H4zM7 12h1v1H7zM0 13h2v1H0zM4 13h1v1H4zM7 13h1v1H7zM5 14h1v1H5zM8 14h1v1H8zM5 15h1v1H5zM8 15h1v1H8zM6 16h2v1H6z"/>
+                            <path fill="#ffffff" d="M1 2h1v1H1zM1 3h2v1H1zM1 4h3v1H1zM1 5h4v1H1zM1 6h5v1H1zM1 7h6v1H1zM1 8h7v1H1zM1 9h8v1H1zM1 10h5v1H1zM1 11h2v1H1zM4 11h2v1H4zM1 12h1v1H1zM5 12h2v1H5zM5 13h2v1H5zM6 14h2v1H6zM6 15h2v1H6z"/>
+                        </svg>
+
+                        <span class="sticker sticker-gg" aria-hidden="true">GG!</span>
+                    </span>
+
+                    <a href="#como-funciona" class="ghost-link">
+                        Cómo funciona
+                    </a>
+
+                </div>
+            </div>
+
+            <div class="bracket" aria-hidden="true">
+
+                <div class="bracket-head">
+                    <span>Cuartos</span>
+                    <span>Semis</span>
+                    <span>Final</span>
+                </div>
+
+                <div class="bracket-body">
+
+                    <div class="round round-1">
+                        <div class="pair">
+                            <div class="slot win"><span>Nébula</span><b>13</b></div>
+                            <div class="slot"><span>Ruta 2</span><b>9</b></div>
+                        </div>
+                        <div class="pair">
+                            <div class="slot"><span>Kairos</span><b>11</b></div>
+                            <div class="slot win"><span>Los Pibes</span><b>13</b></div>
+                        </div>
+                    </div>
+
+                    <div class="round round-2">
+                        <div class="pair">
+                            <div class="slot win"><span>Nébula</span><b>2</b></div>
+                            <div class="slot"><span>Los Pibes</span><b>1</b></div>
+                        </div>
+                    </div>
+
+                    <div class="round round-3">
+                        <div class="slot final"><span>Nébula</span><b>vs</b></div>
+                        <a href="#partidas" class="slot open" tabindex="-1"><span>Tu equipo</span><b>?</b></a>
+                    </div>
+
+                </div>
+
+                <div class="bracket-foot">
+                    <span>● Final abierta · 5v5 · LAS</span>
+                    <strong>1 lugar</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="ticker" aria-hidden="true">
+            <div class="ticker-track">
+
+                <span>Valorant</span>
+                <span>League of Legends</span>
+                <span>Counter-Strike 2</span>
+                <span>5v5</span>
+                <span>LAS</span>
+                <span>LAN</span>
+                <span>BR</span>
+
+                <span>Valorant</span>
+                <span>League of Legends</span>
+                <span>Counter-Strike 2</span>
+                <span>5v5</span>
+                <span>LAS</span>
+                <span>LAN</span>
+                <span>BR</span>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- explorar partidas -->
+
+    <section class="explore-section" id="partidas" data-ronda="01" data-seccion="Explorar scrims">
+        <div class="container">
+
+            <div class="section-top">
+                <div>
+                    <span class="round-tag">Ronda 01 · Matchmaking</span>
+                    <h2>Explorar scrims</h2>
+
+                    <p class="section-description">
+                        Encontrá partidas disponibles para tu juego y región.
+                    </p>
+                </div>
+
+                <div class="results-badge" id="contador">
+                    Cargando partidas...
+                </div>
+            </div>
+
+            <div class="filters">
+
+                <div class="filter-field search-field">
+                    <label for="busqueda">Buscar juego</label>
+
+                    <input
+                            type="search"
+                            id="busqueda"
+                            placeholder="Valorant, LoL, CS2..."
+                            autocomplete="off"
+                    >
+                </div>
+
+                <div class="filter-field">
+                    <label for="filtroJuego">Juego</label>
+
+                    <select id="filtroJuego">
+                        <option value="">
+                            Todos los juegos
+                        </option>
+                    </select>
+                </div>
+
+                <div class="filter-field">
+                    <label for="filtroRegion">Región</label>
+
+                    <select id="filtroRegion">
+                        <option value="">
+                            Todas las regiones
+                        </option>
+                    </select>
+                </div>
+
+                <button
+                        type="button"
+                        class="clear-button"
+                        id="limpiarFiltros"
+                >
+                    Limpiar filtros
+                </button>
+
+            </div>
+
+            <div class="list-header">
+                <h3>Partidas disponibles</h3>
+
+                <span id="estadoCarga">
+                    Conectando con el servidor...
+                </span>
+            </div>
+
+            <div
+                    id="listaScrims"
+                    class="scrims-grid"
+                    aria-live="polite"
+            >
+                <div class="message-card">
+                    Cargando partidas...
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- funcionamiento del producto -->
+
+    <section class="info-section" id="como-funciona" data-ronda="02" data-seccion="Cómo funciona">
+        <div class="container">
+
+            <div class="info-heading">
+                <div>
+                    <span class="round-tag">Ronda 02 · Cómo funciona</span>
+                    <h2>De la búsqueda al lobby.</h2>
+
+                    <p class="section-description">
+                        Todo el recorrido de una scrim,
+                        desde un mismo lugar.
+                    </p>
+                </div>
+            </div>
+
+            <div class="workflow-panel">
+
+                <div class="workflow-copy">
+
+                    <h3>
+                        Vos jugá.<br>
+                        El lobby se arma solo.
+                    </h3>
+
+                    <p>
+                        Encontrá partidas según el juego y la región,
+                        enviá tu postulación y seguí su estado
+                        desde tu cuenta.
+                    </p>
+
+                    <p>
+                        El organizador revisa las solicitudes
+                        y administra los participantes.
+                        Cuando se completa el lobby,
+                        los jugadores pueden confirmar
+                        su participación.
+                    </p>
+
+                    <a href="#partidas" class="workflow-link">
+                        Explorar partidas
+                        <span aria-hidden="true">→</span>
+                    </a>
+
+                </div>
+
+                <div class="workflow-preview">
+
+                    <div class="workflow-terminal">
+
+                        <div class="workflow-terminal-head">
+                            <span>ESCRIMS / LOBBY</span>
+                            <span class="workflow-demo-label">
+                                EJEMPLO VISUAL
+                            </span>
+                        </div>
+
+                        <div class="workflow-terminal-main">
+
+                            <div class="workflow-terminal-title">
+                                <div>
+                                    <span class="workflow-small">
+                                        PARTIDA COMPETITIVA
+                                    </span>
+
+                                    <h4>VALORANT</h4>
+
+                                    <p>5V5 · LAS · RANGO 3–7</p>
+                                </div>
+
+                                <div class="workflow-status">
+                                    BUSCANDO
+                                </div>
+                            </div>
+
+                            <div class="workflow-progress">
+                                <div class="workflow-progress-info">
+                                    <span>PARTICIPANTES</span>
+                                    <strong>7 / 10</strong>
+                                </div>
+
+                                <div class="workflow-progress-track">
+                                    <div class="workflow-progress-fill"></div>
+                                </div>
+                            </div>
+
+                            <div class="workflow-terminal-row">
+                                <span>Postulación</span>
+                                <strong>SOLICITUD ENVIADA</strong>
+                            </div>
+
+                            <div class="workflow-terminal-row">
+                                <span>Estado</span>
+                                <strong class="workflow-pending">
+                                    PENDIENTE
+                                </strong>
+                            </div>
+
+                        </div>
+
+                        <div class="workflow-terminal-foot">
+                            <span>ORGANIZACIÓN DE SCRIMS</span>
+                            <span>eScrims_</span>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- cuenta -->
+
+    <section class="organizador-section" id="mi-cuenta" data-ronda="03" data-seccion="Mi cuenta">
+        <div class="container">
+
+            <div class="organizador-encabezado">
+                <div>
+                    <span class="round-tag">Ronda 03 · Acceso</span>
+                    <h2 class="organizador-titulo">Mi cuenta</h2>
+
+                    <p class="section-description" id="cuentaDescripcion">
+                        Iniciá sesión o creá una cuenta para postularte a partidas.
+                    </p>
+                </div>
+            </div>
+
+            <div id="contenidoCuenta">
+
+                <form class="organizador-card" id="formLogin" novalidate>
+                    <h3>Iniciar sesión</h3>
+
+                    <div class="filter-field">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" name="email" autocomplete="email" required>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="loginPassword">Contraseña</label>
+                        <input type="password" id="loginPassword" name="password" autocomplete="current-password" minlength="8" required>
+                    </div>
+
+                    <button type="submit" class="postular-button">Entrar</button>
+                </form>
+
+                <form class="organizador-card" id="formRegistro" novalidate>
+                    <h3>Crear cuenta</h3>
+
+                    <div class="filter-field">
+                        <label for="registroUsuario">Usuario</label>
+                        <input type="text" id="registroUsuario" name="username" autocomplete="username" required>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="registroEmail">Email</label>
+                        <input type="email" id="registroEmail" name="email" autocomplete="email" required>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="registroPassword">Contraseña</label>
+                        <input type="password" id="registroPassword" name="password" autocomplete="new-password" minlength="8" placeholder="Mínimo 8 caracteres" required>
+                    </div>
+
+                    <div class="campos-dobles">
+                        <div class="filter-field">
+                            <label for="registroRegion">Región</label>
+                            <select id="registroRegion" name="region" required>
+                                <option value="LAS">LAS</option>
+                                <option value="LAN">LAN</option>
+                                <option value="BR">BR</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="registroRango">Rango</label>
+                            <select id="registroRango" name="rango" required>
+                                <option value="1">Rango 1</option>
+                                <option value="2">Rango 2</option>
+                                <option value="3">Rango 3</option>
+                                <option value="4">Rango 4</option>
+                                <option value="5">Rango 5</option>
+                                <option value="6">Rango 6</option>
+                                <option value="7">Rango 7</option>
+                                <option value="8">Rango 8</option>
+                                <option value="9">Rango 9</option>
+                                <option value="10">Rango 10</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="postular-button">Crear cuenta</button>
+                </form>
+
+            </div>
+
+            <div class="perfil-card" id="perfilCuenta" hidden>
+                <div class="perfil-avatar" id="perfilInicial">?</div>
+
+                <div class="perfil-info">
+                    <span class="perfil-etiqueta">Pase de jugador</span>
+                    <h3 class="perfil-nombre" id="perfilNombre"></h3>
+
+                    <div class="perfil-datos">
+                        <span>Región <strong id="perfilRegion"></strong></span>
+                        <span>Rol <strong id="perfilRol"></strong></span>
+                        <span>ID <strong id="perfilId"></strong></span>
+                    </div>
+                </div>
+
+                <button type="button" class="actualizar-postulaciones" id="cerrarSesion">
+                    Cerrar sesión
+                </button>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- mis postulaciones -->
+
+    <section class="mis-postulaciones-section" id="mis-postulaciones" data-ronda="04" data-seccion="Mis postulaciones" hidden>
+        <div class="container">
+
+            <div class="mis-postulaciones-encabezado">
+                <div>
+                    <span class="round-tag">Ronda 04 · Seguimiento</span>
+                    <h2 class="mis-postulaciones-titulo">Mis postulaciones</h2>
+
+                    <p class="section-description">
+                        El estado de cada solicitud que enviaste.
+                    </p>
+                </div>
+
+                <div class="mis-postulaciones-acciones">
+                    <button type="button" class="actualizar-postulaciones" id="actualizarPostulaciones">
+                        Actualizar
+                    </button>
+                </div>
+            </div>
+
+            <div class="lista-postulaciones" id="listaPostulaciones" aria-live="polite"></div>
+
+        </div>
+    </section>
+
+    <!-- panel organizador -->
+
+    <section class="organizador-section" id="organizador" data-ronda="05" data-seccion="Panel organizador" hidden>
+        <div class="container">
+
+            <div class="organizador-encabezado">
+                <div>
+                    <span class="round-tag">Ronda 05 · Organización</span>
+                    <h2 class="organizador-titulo">Panel organizador</h2>
+
+                    <p class="section-description">
+                        Revisá las solicitudes y armá los lobbies.
+                    </p>
+                </div>
+
+                <span class="organizador-demo">Rol · Organizador</span>
+            </div>
+
+            <div class="organizador-resumen">
+                <div class="organizador-resumen-item">
+                    <strong id="resumenPendientes">0</strong>
+                    <span>Pendientes</span>
+                </div>
+
+                <div class="organizador-resumen-item">
+                    <strong id="resumenAceptadas">0</strong>
+                    <span>Aceptadas</span>
+                </div>
+
+                <div class="organizador-resumen-item">
+                    <strong id="resumenRechazadas">0</strong>
+                    <span>Rechazadas</span>
+                </div>
+            </div>
+
+            <div class="organizador-barra">
+                <h3>Solicitudes recibidas</h3>
+
+                <button type="button" class="actualizar-postulaciones" id="actualizarOrganizador">
+                    Actualizar
+                </button>
+            </div>
+
+            <div class="lista-organizador" id="listaOrganizador" aria-live="polite"></div>
+
+        </div>
+    </section>
+
+</main>
+
+<footer class="footer">
+    <div class="container footer-content">
+
+        <span class="logo">
+            eScrims<span>_</span>
+        </span>
+
+        <p>
+            Plataforma de organización de partidas competitivas.
+        </p>
+
+        <span>GG · Proyecto académico 2026</span>
+
+    </div>
+</footer>
+
+<div class="notificaciones" id="notificaciones" aria-live="polite"></div>
+
+</body>
+</html>
