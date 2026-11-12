@@ -63,9 +63,9 @@ public class WebAuthService {
                     );
                 }
 
-                if (contrasena.length() < 16) {
+                if (contrasena.length() < 8) {
                     throw new IllegalStateException(
-                            "La contrasena del organizador debe tener al menos 16 caracteres"
+                            "La contrasena del organizador debe tener al menos 8 caracteres"
                     );
                 }
 
