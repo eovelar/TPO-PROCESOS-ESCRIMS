@@ -1,3 +1,4 @@
+
 <p align="center">
   <img src="src/web/portada.png" alt="eScrims — Encontrá tu próxima partida" width="100%">
 </p>
@@ -9,7 +10,7 @@
 <p align="center">
   Trabajo Práctico Final — Patrones de Diseño<br>
   Universidad Argentina de la Empresa (UADE) · Tecnicatura en Desarrollo de Software
-</p>A
+</p>
 
 <p align="center">
   <strong>Integrantes:</strong> Evangelina Ovelar y Luka Peralta
@@ -19,10 +20,6 @@
   <a href="https://escrims-demo.onrender.com/">
     <img src="https://img.shields.io/badge/Ver_demo_online-a07cff?style=for-the-badge&logoColor=white" alt="Ver demo online">
   </a>
-</p>
-
-<p align="center">
-  <sub>La demo pública muestra el catálogo de partidas. El registro, el login y las postulaciones están disponibles en la ejecución local.</sub>
 </p>
 
 ---
