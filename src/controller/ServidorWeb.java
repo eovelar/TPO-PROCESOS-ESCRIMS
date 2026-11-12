@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import domain.Usuario;
 import persistence.PostulacionRepository;
 import persistence.ScrimRepository;
+import service.NotificacionScrimService;
 import service.WebAuthService;
 
 import java.io.IOException;
@@ -31,6 +32,8 @@ public class ServidorWeb {
     private final PostulacionRepository postulaciones =
             new PostulacionRepository();
 
+    private final NotificacionScrimService notificaciones;
+
     private final Path carpetaWeb =
             Path.of("src", "web");
 
@@ -42,9 +45,8 @@ public class ServidorWeb {
     public ServidorWeb(int puerto) throws IOException {
 
         this.puerto = puerto;
-
-        produccion = System.getenv("PORT") != null;
-        origenPublico = System.getenv("PUBLIC_ORIGIN");
+        this.produccion = System.getenv("PORT") != null;
+        this.origenPublico = System.getenv("PUBLIC_ORIGIN");
 
         if (produccion &&
                 (origenPublico == null || origenPublico.isBlank())) {
@@ -53,6 +55,14 @@ public class ServidorWeb {
                     "Falta configurar PUBLIC_ORIGIN"
             );
         }
+
+        // configura las notificaciones al iniciar el servidor
+        notificaciones = new NotificacionScrimService(produccion);
+
+        notificaciones.configurar(
+                "jugadores de eScrims",
+                "organizador de eScrims"
+        );
 
         String direccion = produccion
                 ? "0.0.0.0"
@@ -64,16 +74,8 @@ public class ServidorWeb {
         );
 
         servidor.createContext("/health", this::health);
-
-        servidor.createContext(
-                "/api/auth",
-                this::manejarAuth
-        );
-
-        servidor.createContext(
-                "/api/scrims",
-                this::listarScrims
-        );
+        servidor.createContext("/api/auth", this::manejarAuth);
+        servidor.createContext("/api/scrims", this::listarScrims);
 
         servidor.createContext(
                 "/api/postulaciones",
@@ -88,31 +90,28 @@ public class ServidorWeb {
         servidor.createContext("/", this::servirPagina);
     }
 
-    private void health(HttpExchange ex)
-            throws IOException {
+    private void health(HttpExchange ex) throws IOException {
 
         if (!ex.getRequestURI().getPath().equals("/health")) {
-
             error(ex, 404, "Ruta no encontrada");
-
-        } else if (!ex.getRequestMethod().equals("GET")) {
-
-            error(ex, 405, "Metodo no permitido");
-
-        } else {
-
-            enviar(
-                    ex,
-                    200,
-                    "READY".getBytes(StandardCharsets.UTF_8),
-                    "text/plain; charset=UTF-8"
-            );
+            return;
         }
+
+        if (!ex.getRequestMethod().equals("GET")) {
+            error(ex, 405, "Metodo no permitido");
+            return;
+        }
+
+        enviar(
+                ex,
+                200,
+                "READY".getBytes(StandardCharsets.UTF_8),
+                "text/plain; charset=UTF-8"
+        );
     }
 
-    // administra el registro, login y cierre de sesión
-    private void manejarAuth(HttpExchange ex)
-            throws IOException {
+    // administra el registro y las sesiones de los usuarios
+    private void manejarAuth(HttpExchange ex) throws IOException {
 
         String ruta = ex.getRequestURI().getPath();
         String metodo = ex.getRequestMethod();
@@ -199,7 +198,6 @@ public class ServidorWeb {
 
                 String email = datos.get("email");
 
-                // la cuenta de prueba solo se utiliza localmente
                 if (produccion &&
                         email != null &&
                         email.trim().equalsIgnoreCase(
@@ -235,7 +233,6 @@ public class ServidorWeb {
                 return;
             }
 
-            // guarda la sesión en una cookie protegida
             ex.getResponseHeaders().add(
                     "Set-Cookie",
                     cookieSesion(acceso.token())
@@ -254,7 +251,7 @@ public class ServidorWeb {
         } catch (IllegalStateException e) {
 
             System.err.println(
-                    "Error en autenticacion: "
+                    "Error de autenticacion: "
                             + e.getClass().getSimpleName()
             );
 
@@ -266,9 +263,8 @@ public class ServidorWeb {
         }
     }
 
-    // obtiene las partidas directamente desde supabase
-    private void listarScrims(HttpExchange ex)
-            throws IOException {
+    // obtiene las partidas y sus cupos desde supabase
+    private void listarScrims(HttpExchange ex) throws IOException {
 
         if (!ex.getRequestURI().getPath()
                 .equals("/api/scrims")) {
@@ -278,7 +274,6 @@ public class ServidorWeb {
         }
 
         if (!ex.getRequestMethod().equals("GET")) {
-
             error(ex, 405, "Metodo no permitido");
             return;
         }
@@ -293,10 +288,10 @@ public class ServidorWeb {
             for (ScrimRepository.ScrimGuardado s : lista) {
 
                 if (json.length() > 1) {
-                    json.append(',');
+                    json.append(",");
                 }
 
-                json.append('{')
+                json.append("{")
                         .append("\"id\":")
                         .append(s.id())
 
@@ -321,18 +316,38 @@ public class ServidorWeb {
                         .append(",\"cuposTotales\":")
                         .append(s.cuposTotales())
 
-                        .append('}');
+                        .append("}");
             }
 
             enviarJson(
                     ex,
                     200,
-                    json.append(']').toString()
+                    json.append("]").toString()
             );
 
         } catch (SQLException e) {
 
+            System.err.println(
+                    "Error SQL al cargar partidas:"
+            );
+
+            e.printStackTrace();
+
             errorBaseDatos(ex, e);
+
+        } catch (RuntimeException e) {
+
+            System.err.println(
+                    "Error interno al cargar partidas:"
+            );
+
+            e.printStackTrace();
+
+            error(
+                    ex,
+                    500,
+                    "Error interno al cargar las partidas"
+            );
         }
     }
 
@@ -394,7 +409,7 @@ public class ServidorWeb {
                             "scrimId"
                     );
 
-                    // la base de datos genera el id de la solicitud
+                    // guarda la solicitud y obtiene el id generado
                     int id = postulaciones.guardar(
                             sesion.usuario().getId(),
                             scrimId,
@@ -445,7 +460,7 @@ public class ServidorWeb {
         }
     }
 
-    // el organizador puede revisar y resolver solicitudes
+    // permite al organizador aceptar o rechazar jugadores
     private void manejarOrganizador(HttpExchange ex)
             throws IOException {
 
@@ -509,11 +524,47 @@ public class ServidorWeb {
                             "postulacionId"
                     );
 
-                    // acepta o rechaza en una transacción
+                    String accion = datos.get("accion");
+
+                    // identifica la partida antes de procesar
+                    PostulacionRepository.PostulacionGuardada solicitud =
+                            buscarPostulacion(id);
+
+                    ScrimRepository.ScrimGuardado partidaAnterior =
+                            buscarScrim(solicitud.scrimId());
+
+                    // guarda la decision en supabase
                     String estado = postulaciones.procesar(
                             id,
-                            datos.get("accion")
+                            accion
                     );
+
+                    // verifica si la partida cambio de estado
+                    try {
+
+                        ScrimRepository.ScrimGuardado partidaActual =
+                                buscarScrim(solicitud.scrimId());
+
+                        if (!partidaAnterior.estado().equals(
+                                partidaActual.estado())) {
+
+                            notificaciones.notificarCambio(
+                                    partidaActual.id(),
+                                    partidaActual.juego(),
+                                    partidaAnterior.estado(),
+                                    partidaActual.estado()
+                            );
+                        }
+
+                    } catch (SQLException | RuntimeException e) {
+
+                        // la solicitud ya se guardo: no se revierte
+                        System.err.println(
+                                "No se pudo verificar la notificacion"
+                        );
+
+                        e.printStackTrace();
+                    }
 
                     enviarJson(
                             ex,
@@ -521,7 +572,9 @@ public class ServidorWeb {
                             "{"
                                     + "\"mensaje\":\"Solicitud procesada\","
                                     + "\"id\":" + id
-                                    + ",\"estado\":\"" + estado + "\""
+                                    + ",\"estado\":\""
+                                    + escapar(estado)
+                                    + "\""
                                     + "}"
                     );
                 }
@@ -547,7 +600,39 @@ public class ServidorWeb {
         }
     }
 
-    // transforma las postulaciones al formato que usa app.js
+    // busca una postulacion guardada por su id
+    private PostulacionRepository.PostulacionGuardada buscarPostulacion(
+            int id
+    ) throws SQLException {
+
+        return postulaciones.listarTodas()
+                .stream()
+                .filter(p -> p.id() == id)
+                .findFirst()
+                .orElseThrow(
+                        () -> new IllegalArgumentException(
+                                "Postulacion no encontrada"
+                        )
+                );
+    }
+
+    // recupera una partida guardada en supabase
+    private ScrimRepository.ScrimGuardado buscarScrim(
+            int id
+    ) throws SQLException {
+
+        return scrims.listar()
+                .stream()
+                .filter(s -> s.id() == id)
+                .findFirst()
+                .orElseThrow(
+                        () -> new IllegalArgumentException(
+                                "Partida no encontrada"
+                        )
+                );
+    }
+
+    // convierte las solicitudes al json usado por la web
     private String postulacionesJson(
             List<PostulacionRepository.PostulacionGuardada> lista,
             boolean incluirUsuario
@@ -558,10 +643,10 @@ public class ServidorWeb {
         for (PostulacionRepository.PostulacionGuardada p : lista) {
 
             if (json.length() > 1) {
-                json.append(',');
+                json.append(",");
             }
 
-            json.append('{')
+            json.append("{")
                     .append("\"id\":")
                     .append(p.id())
 
@@ -582,22 +667,22 @@ public class ServidorWeb {
 
                     .append("\",\"estado\":\"")
                     .append(escapar(p.estado()))
-                    .append('"');
+                    .append("\"");
 
             if (incluirUsuario) {
 
                 json.append(",\"usuario\":\"")
                         .append(escapar(p.usuario()))
-                        .append('"');
+                        .append("\"");
             }
 
-            json.append('}');
+            json.append("}");
         }
 
-        return json.append(']').toString();
+        return json.append("]").toString();
     }
 
-    // sirve los archivos de la interfaz sin modificarlos
+    // entrega los archivos de la interfaz
     private void servirPagina(HttpExchange ex)
             throws IOException {
 
@@ -698,7 +783,7 @@ public class ServidorWeb {
         return null;
     }
 
-    // valida que las solicitudes provengan de nuestra web
+    // valida el origen de las solicitudes
     private boolean validarOrigen(HttpExchange ex)
             throws IOException {
 
@@ -737,7 +822,7 @@ public class ServidorWeb {
         return valido;
     }
 
-    // lee los datos enviados desde los formularios
+    // obtiene los campos enviados desde los formularios
     private Map<String, String> formulario(HttpExchange ex)
             throws IOException {
 
@@ -811,19 +896,17 @@ public class ServidorWeb {
 
         Usuario u = sesion.usuario();
 
-        return "{\"autenticado\":true,\"id\":"
-                + u.getId()
-
+        return "{"
+                + "\"autenticado\":true,"
+                + "\"id\":" + u.getId()
                 + ",\"username\":\""
                 + escapar(u.getUsername())
-
                 + "\",\"region\":\""
                 + escapar(u.getRegion())
-
                 + "\",\"rol\":\""
                 + escapar(sesion.rol())
-
-                + "\"}";
+                + "\""
+                + "}";
     }
 
     private String cookieSesion(String token) {
@@ -842,7 +925,7 @@ public class ServidorWeb {
                 + "; Max-Age=0";
     }
 
-    // escapa caracteres especiales antes de generar el json
+    // escapa caracteres especiales al generar json
     private String escapar(String texto) {
 
         if (texto == null) {
@@ -857,7 +940,6 @@ public class ServidorWeb {
 
                 case '"' -> resultado.append("\\\"");
                 case '\\' -> resultado.append("\\\\");
-
                 case '\n' -> resultado.append("\\n");
                 case '\r' -> resultado.append("\\r");
                 case '\t' -> resultado.append("\\t");
@@ -978,6 +1060,10 @@ public class ServidorWeb {
                                 ? origenPublico
                                 : "http://localhost:" + puerto
                 )
+        );
+
+        System.out.println(
+                "Notificaciones de scrims habilitadas"
         );
     }
 
