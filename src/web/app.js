@@ -1,13 +1,4 @@
-/* ==========================================================
-   eScrims — app.js
-   Partidas, cuenta, postulaciones, panel organizador,
-   notificaciones e indicador de sección.
-   ========================================================== */
-
-/* marca que hay JS: habilita las animaciones que dependen de él */
 document.documentElement.classList.add("js");
-
-/* elementos */
 
 const listaScrims = document.getElementById("listaScrims");
 const contador = document.getElementById("contador");
@@ -36,7 +27,16 @@ const actualizarOrganizadorBoton = document.getElementById("actualizarOrganizado
 const navPostulaciones = document.getElementById("navPostulaciones");
 const navOrganizador = document.getElementById("navOrganizador");
 
-/* estado */
+const formCrearScrim = document.getElementById("formCrearScrim");
+const formatoCrearScrim = document.getElementById("scrimFormato");
+const cuposCrearScrim = document.getElementById("scrimCupos");
+const botonCrearScrim = document.getElementById("botonCrearScrim");
+
+const formRecomendaciones = document.getElementById("formRecomendaciones");
+const recomendacionScrim = document.getElementById("recomendacionScrim");
+const recomendacionCompatibilidad = document.getElementById("recomendacionCompatibilidad");
+const botonRecomendaciones = document.getElementById("botonRecomendaciones");
+const listaRecomendaciones = document.getElementById("listaRecomendaciones");
 
 let scrims = [];
 let scrimsCargadas = false;
@@ -56,9 +56,7 @@ const iconosJuegos = {
     CS2: "CS2"
 };
 
-/* utilidades */
-
-function crearElemento(etiqueta, clase, contenido) {
+function crearElemento(etiqueta, clase = "", contenido) {
     const elemento = document.createElement(etiqueta);
 
     if (clase) {
@@ -77,7 +75,6 @@ function formatearFecha(fecha) {
         return "Sin fecha";
     }
 
-    // LocalDateTime de Java puede traer nanosegundos: se recortan
     const valor = new Date(String(fecha).replace(/\.\d+$/, ""));
 
     if (Number.isNaN(valor.getTime())) {
@@ -125,11 +122,12 @@ function irA(id) {
     const destino = document.getElementById(id);
 
     if (destino) {
-        destino.scrollIntoView({ behavior: "smooth", block: "start" });
+        destino.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
     }
 }
-
-/* comunicación con el servidor */
 
 async function api(url, opciones = {}) {
     const respuesta = await fetch(url, {
@@ -149,6 +147,7 @@ async function api(url, opciones = {}) {
         const error = new Error(
             (datos && datos.error) || "Error HTTP " + respuesta.status
         );
+
         error.status = respuesta.status;
         throw error;
     }
@@ -166,17 +165,13 @@ function enviarFormulario(url, valores) {
     });
 }
 
-/* ==========================================================
-   mascota pixelada (16x16, dibujada con SVG)
-   ========================================================== */
-
 const COLORES_BICHO = {
-    o: "#4a2fa8", // contorno
-    v: "#a07cff", // cuerpo
-    w: "#d9ccff", // brillo
-    l: "#d6ff5e", // ojos y antenas
-    k: "#120d1f", // pupilas y boca
-    p: "#ff8fc0"  // cachetes
+    o: "#4a2fa8",
+    v: "#a07cff",
+    w: "#d9ccff",
+    l: "#d6ff5e",
+    k: "#120d1f",
+    p: "#ff8fc0"
 };
 
 const ANTENAS_BICHO = [
@@ -206,14 +201,30 @@ const CUERPO_BICHO = [
 
 const CARAS_BICHO = {
     feliz: {
-        abiertos: [[6, ".....ll..ll....."], [7, ".....lk..lk....."]],
-        cerrados: [[7, ".....kk..kk....."]],
-        boca: [[9, "...pp.k..k.pp..."], [10, ".......kk......."]]
+        abiertos: [
+            [6, ".....ll..ll....."],
+            [7, ".....lk..lk....."]
+        ],
+        cerrados: [
+            [7, ".....kk..kk....."]
+        ],
+        boca: [
+            [9, "...pp.k..k.pp..."],
+            [10, ".......kk......."]
+        ]
     },
     triste: {
-        abiertos: [[7, ".....l....l....."], [8, ".....k....k....."]],
-        cerrados: [[8, ".....k....k....."]],
-        boca: [[10, ".......kk......."], [11, "......k..k......"]]
+        abiertos: [
+            [7, ".....l....l....."],
+            [8, ".....k....k....."]
+        ],
+        cerrados: [
+            [8, ".....k....k....."]
+        ],
+        boca: [
+            [10, ".......kk......."],
+            [11, "......k..k......"]
+        ]
     }
 };
 
@@ -223,8 +234,10 @@ function pixeles(filas) {
     filas.forEach(([y, fila]) => {
         [...fila].forEach((letra, x) => {
             if (COLORES_BICHO[letra]) {
-                html += '<rect x="' + x + '" y="' + y +
-                    '" width="1" height="1" fill="' + COLORES_BICHO[letra] + '"/>';
+                html += '<rect x="' + x +
+                    '" y="' + y +
+                    '" width="1" height="1" fill="' +
+                    COLORES_BICHO[letra] + '"/>';
             }
         });
     });
@@ -232,36 +245,46 @@ function pixeles(filas) {
     return html;
 }
 
-// tipo: "feliz", "triste" o "cargando"
 function crearBicho(tipo = "feliz") {
-    const cara = CARAS_BICHO[tipo === "triste" ? "triste" : "feliz"];
-    const numeradas = filas => filas.map((fila, y) => [y, fila]);
+    const cara = CARAS_BICHO[
+        tipo === "triste" ? "triste" : "feliz"
+        ];
 
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const numeradas = filas =>
+        filas.map((fila, y) => [y, fila]);
+
+    const svg = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "svg"
+    );
+
     svg.setAttribute("viewBox", "0 0 16 16");
     svg.setAttribute("shape-rendering", "crispEdges");
     svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("class", "bicho" + (tipo === "cargando" ? " saltando" : ""));
+    svg.setAttribute(
+        "class",
+        "bicho" + (tipo === "cargando" ? " saltando" : "")
+    );
 
     svg.innerHTML =
         '<g class="bicho-cuerpo">' +
-        '<g class="bicho-antenas">' + pixeles(numeradas(ANTENAS_BICHO)) + "</g>" +
+        '<g class="bicho-antenas">' +
+        pixeles(numeradas(ANTENAS_BICHO)) +
+        "</g>" +
         pixeles(numeradas(CUERPO_BICHO)) +
-        '<g class="bicho-abiertos">' + pixeles(cara.abiertos) + "</g>" +
-        '<g class="bicho-cerrados">' + pixeles(cara.cerrados) + "</g>" +
+        '<g class="bicho-abiertos">' +
+        pixeles(cara.abiertos) +
+        "</g>" +
+        '<g class="bicho-cerrados">' +
+        pixeles(cara.cerrados) +
+        "</g>" +
         pixeles(cara.boca) +
         "</g>";
 
     return svg;
 }
 
-/* ==========================================================
-   avatar pixel: 5x5 simétrico generado a partir del usuario.
-   El mismo nombre siempre da el mismo dibujo.
-   ========================================================== */
-
 function hashTexto(texto) {
-    // FNV-1a de 32 bits
     let hash = 2166136261;
 
     for (const caracter of String(texto)) {
@@ -276,38 +299,53 @@ function crearAvatar(nombre) {
     const hash = hashTexto(String(nombre).toLowerCase());
     const celdas = [];
 
-    // 3 columnas x 5 filas = 15 bits; las columnas 3 y 4 son espejo
     for (let y = 0; y < 5; y++) {
         for (let x = 0; x < 3; x++) {
             const bit = y * 3 + x;
 
             if ((hash >>> bit) & 1) {
-                // algunas celdas en lima, el resto violeta
-                const lima = ((hash >>> (15 + ((bit + y) % 16))) & 3) === 0;
+                const lima =
+                    ((hash >>> (15 + ((bit + y) % 16))) & 3) === 0;
+
                 celdas.push({ x, y, lima });
             }
         }
     }
 
-    // que nunca quede casi vacío
     if (celdas.length < 5) {
-        celdas.push({ x: 2, y: 1, lima: false }, { x: 2, y: 2, lima: true }, { x: 2, y: 3, lima: false });
+        celdas.push(
+            { x: 2, y: 1, lima: false },
+            { x: 2, y: 2, lima: true },
+            { x: 2, y: 3, lima: false }
+        );
     }
 
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svg = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "svg"
+    );
+
     svg.setAttribute("viewBox", "-1 -1 7 7");
     svg.setAttribute("shape-rendering", "crispEdges");
     svg.setAttribute("aria-hidden", "true");
     svg.setAttribute("class", "avatar-pixel");
 
-    let html = '<rect x="-1" y="-1" width="7" height="7" fill="#120d1f"/>';
+    let html =
+        '<rect x="-1" y="-1" width="7" height="7" fill="#120d1f"/>';
 
     celdas.forEach(({ x, y, lima }) => {
         const color = lima ? "#d6ff5e" : "#a07cff";
-        html += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + color + '"/>';
+
+        html += '<rect x="' + x +
+            '" y="' + y +
+            '" width="1" height="1" fill="' +
+            color + '"/>';
 
         if (x !== 2) {
-            html += '<rect x="' + (4 - x) + '" y="' + y + '" width="1" height="1" fill="' + color + '"/>';
+            html += '<rect x="' + (4 - x) +
+                '" y="' + y +
+                '" width="1" height="1" fill="' +
+                color + '"/>';
         }
     });
 
@@ -315,8 +353,6 @@ function crearAvatar(nombre) {
 
     return svg;
 }
-
-/* notificaciones */
 
 function notificar(tipo, titulo, mensaje) {
     let contenedor = document.getElementById("notificaciones");
@@ -327,29 +363,53 @@ function notificar(tipo, titulo, mensaje) {
         document.body.append(contenedor);
     }
 
-    const notificacion = crearElemento("div", "notificacion " + tipo);
-    notificacion.setAttribute("role", tipo === "error" ? "alert" : "status");
+    const notificacion = crearElemento(
+        "div",
+        "notificacion " + tipo
+    );
 
-    // barra de título tipo ventana de juego
+    notificacion.setAttribute(
+        "role",
+        tipo === "error" ? "alert" : "status"
+    );
+
     const barra = crearElemento("div", "notificacion-barra");
-    barra.append(crearElemento("span", "", tipo === "error" ? "ERROR.EXE" : "LOBBY.EXE"));
 
-    const cerrar = crearElemento("button", "notificacion-cerrar", "X");
+    barra.append(
+        crearElemento(
+            "span",
+            "",
+            tipo === "error" ? "ERROR.EXE" : "LOBBY.EXE"
+        )
+    );
+
+    const cerrar = crearElemento(
+        "button",
+        "notificacion-cerrar",
+        "X"
+    );
+
     cerrar.type = "button";
     cerrar.setAttribute("aria-label", "Cerrar notificación");
     barra.append(cerrar);
 
     const cuerpo = crearElemento("div", "notificacion-cuerpo");
-
     const contenido = crearElemento("div", "notificacion-contenido");
+
     contenido.append(
         crearElemento("strong", "notificacion-titulo", titulo),
         crearElemento("p", "notificacion-mensaje", mensaje)
     );
 
-    cuerpo.append(crearBicho(tipo === "error" ? "triste" : "feliz"), contenido);
+    cuerpo.append(
+        crearBicho(tipo === "error" ? "triste" : "feliz"),
+        contenido
+    );
 
-    const progreso = crearElemento("div", "notificacion-progreso");
+    const progreso = crearElemento(
+        "div",
+        "notificacion-progreso"
+    );
 
     notificacion.append(barra, cuerpo, progreso);
     contenedor.append(notificacion);
@@ -363,6 +423,7 @@ function notificar(tipo, titulo, mensaje) {
 
         cerrada = true;
         notificacion.classList.add("saliendo");
+
         setTimeout(() => notificacion.remove(), 250);
     }
 
@@ -370,18 +431,17 @@ function notificar(tipo, titulo, mensaje) {
     setTimeout(quitar, 5000);
 }
 
-/* ==========================================================
-   modo demo (ServidorDemo)
-   Solo ServidorDemo responde "OK" en /health. En ese servidor
-   el acceso y las postulaciones están deshabilitados.
-   ========================================================== */
-
 async function detectarDemo() {
     try {
-        const respuesta = await fetch("/health", { cache: "no-store" });
+        const respuesta = await fetch(
+            "/health",
+            { cache: "no-store" }
+        );
+
         const texto = await respuesta.text();
 
         modoDemo = respuesta.ok && texto.trim() === "OK";
+
     } catch (error) {
         modoDemo = false;
     }
@@ -395,28 +455,28 @@ function aplicarModoDemo() {
     document.body.classList.add("modo-demo");
 
     const aviso = crearElemento("div", "demo-aviso");
+
     aviso.append(
         crearElemento("strong", "", "Demo pública"),
         crearElemento(
             "p",
             "",
-            "En esta versión podés explorar las partidas. El registro, el login " +
-            "y las postulaciones funcionan en la versión completa."
+            "En esta versión podés explorar las partidas. " +
+            "El registro, el login y las postulaciones " +
+            "funcionan en la versión completa."
         )
     );
 
     contenidoCuenta.before(aviso);
 
     [formLogin, formRegistro].forEach(formulario => {
-        formulario.querySelectorAll("input, select, button").forEach(campo => {
+        formulario.querySelectorAll(
+            "input, select, button"
+        ).forEach(campo => {
             campo.disabled = true;
         });
     });
 }
-
-/* ==========================================================
-   partidas
-   ========================================================== */
 
 function crearBotonPostular(scrim) {
     const boton = crearElemento("button", "postular-button");
@@ -428,7 +488,10 @@ function crearBotonPostular(scrim) {
         return boton;
     }
 
-    const postulacion = postulaciones.find(p => p.scrimId === scrim.id);
+    const postulacion = postulaciones.find(
+        p => p.scrimId === scrim.id
+    );
+
     const disponible =
         scrim.estado === "Buscando jugadores" &&
         scrim.cuposDisponibles > 0;
@@ -437,6 +500,7 @@ function crearBotonPostular(scrim) {
         boton.textContent = postulacion.estado === "Pendiente"
             ? "POSTULACIÓN ENVIADA"
             : "SOLICITUD " + String(postulacion.estado).toUpperCase();
+
         boton.classList.add("enviado");
         boton.disabled = true;
         return boton;
@@ -448,7 +512,6 @@ function crearBotonPostular(scrim) {
         return boton;
     }
 
-    // solo los jugadores pueden postularse (igual que en tu versión)
     if (usuario && usuario.rol !== "JUGADOR") {
         boton.textContent = "SOLO JUGADORES";
         boton.disabled = true;
@@ -464,8 +527,14 @@ function crearBotonPostular(scrim) {
                 "Necesitás una cuenta",
                 "Iniciá sesión o registrate para postularte a esta partida."
             );
+
             irA("mi-cuenta");
-            setTimeout(() => document.getElementById("loginEmail")?.focus({ preventScroll: true }), 500);
+
+            setTimeout(() => {
+                document.getElementById("loginEmail")?.focus({
+                    preventScroll: true
+                });
+            }, 500);
         });
 
         return boton;
@@ -479,10 +548,13 @@ function crearBotonPostular(scrim) {
 
 function crearTarjeta(scrim) {
     const tarjeta = crearElemento("article", "scrim-card");
-
     const superior = crearElemento("div", "card-top");
 
-    const icono = crearElemento("div", "game-icon", iconosJuegos[scrim.juego] || "ES");
+    const icono = crearElemento(
+        "div",
+        "game-icon",
+        iconosJuegos[scrim.juego] || "ES"
+    );
 
     const buscando = scrim.estado === "Buscando jugadores";
 
@@ -494,7 +566,11 @@ function crearTarjeta(scrim) {
 
     superior.append(icono, estado);
 
-    const titulo = crearElemento("h4", "", nombreJuego(scrim.juego));
+    const titulo = crearElemento(
+        "h4",
+        "",
+        nombreJuego(scrim.juego)
+    );
 
     const subtitulo = crearElemento(
         "p",
@@ -511,7 +587,6 @@ function crearTarjeta(scrim) {
     );
 
     const inferior = crearElemento("div", "card-bottom");
-
     const cupos = crearElemento("div", "cupos");
 
     const cuposTexto = crearElemento(
@@ -522,36 +597,53 @@ function crearTarjeta(scrim) {
             : scrim.cuposDisponibles + " cupos disponibles"
     );
 
-    // si el servidor manda cuposTotales, se muestran como slots
-    if (Number.isInteger(scrim.cuposTotales) && scrim.cuposTotales > 0) {
+    if (
+        Number.isInteger(scrim.cuposTotales) &&
+        scrim.cuposTotales > 0
+    ) {
         const slots = crearElemento("div", "cupos-slots");
         slots.setAttribute("aria-hidden", "true");
 
-        const ocupados = Math.max(0, scrim.cuposTotales - scrim.cuposDisponibles);
+        const ocupados = Math.max(
+            0,
+            scrim.cuposTotales - scrim.cuposDisponibles
+        );
 
         for (let i = 0; i < scrim.cuposTotales; i++) {
-            slots.append(crearElemento("i", i < ocupados ? "ocupado" : ""));
+            slots.append(
+                crearElemento("i", i < ocupados ? "ocupado" : "")
+            );
         }
 
         cuposTexto.textContent =
-            scrim.cuposDisponibles + " de " + scrim.cuposTotales + " cupos libres";
+            scrim.cuposDisponibles +
+            " de " +
+            scrim.cuposTotales +
+            " cupos libres";
 
         cupos.append(slots);
     }
 
     cupos.append(cuposTexto, crearBotonPostular(scrim));
 
-    const identificador = crearElemento("span", "card-id", "SCRIM #" + scrim.id);
+    const identificador = crearElemento(
+        "span",
+        "card-id",
+        "SCRIM #" + scrim.id
+    );
 
     inferior.append(cupos, identificador);
-
     tarjeta.append(superior, titulo, subtitulo, detalles, inferior);
 
     return tarjeta;
 }
 
-// bicho: "feliz", "triste", "cargando" o null para mostrar solo texto
-function mostrarMensaje(contenedor, mensaje, bicho = "triste", detalle) {
+function mostrarMensaje(
+    contenedor,
+    mensaje,
+    bicho = "triste",
+    detalle
+) {
     const tarjeta = crearElemento("div", "message-card");
 
     if (bicho) {
@@ -561,7 +653,9 @@ function mostrarMensaje(contenedor, mensaje, bicho = "triste", detalle) {
     tarjeta.append(crearElemento("p", "", mensaje));
 
     if (detalle) {
-        tarjeta.append(crearElemento("small", "message-detalle", detalle));
+        tarjeta.append(
+            crearElemento("small", "message-detalle", detalle)
+        );
     }
 
     contenedor.replaceChildren(tarjeta);
@@ -571,11 +665,21 @@ function actualizarFiltros() {
     const juegoElegido = filtroJuego.value;
     const regionElegida = filtroRegion.value;
 
-    const juegos = [...new Set(scrims.map(scrim => scrim.juego))].sort();
-    const regiones = [...new Set(scrims.map(scrim => scrim.region))].sort();
+    const juegos = [
+        ...new Set(scrims.map(scrim => scrim.juego))
+    ].sort();
 
-    filtroJuego.replaceChildren(new Option("Todos los juegos", ""));
-    filtroRegion.replaceChildren(new Option("Todas las regiones", ""));
+    const regiones = [
+        ...new Set(scrims.map(scrim => scrim.region))
+    ].sort();
+
+    filtroJuego.replaceChildren(
+        new Option("Todos los juegos", "")
+    );
+
+    filtroRegion.replaceChildren(
+        new Option("Todas las regiones", "")
+    );
 
     juegos.forEach(juego => {
         filtroJuego.add(new Option(nombreJuego(juego), juego));
@@ -585,7 +689,6 @@ function actualizarFiltros() {
         filtroRegion.add(new Option(region, region));
     });
 
-    // conservar lo que el usuario tenía elegido al recargar
     if (juegos.includes(juegoElegido)) {
         filtroJuego.value = juegoElegido;
     }
@@ -593,6 +696,42 @@ function actualizarFiltros() {
     if (regiones.includes(regionElegida)) {
         filtroRegion.value = regionElegida;
     }
+}
+
+function actualizarPartidasRecomendaciones() {
+    if (!recomendacionScrim) {
+        return;
+    }
+
+    const seleccionAnterior = recomendacionScrim.value;
+
+    const disponibles = scrims.filter(
+        scrim => scrim.estado === "Buscando jugadores"
+    );
+
+    recomendacionScrim.replaceChildren(
+        new Option("Seleccioná una partida", "")
+    );
+
+    disponibles.forEach(scrim => {
+        const descripcion =
+            "#" + scrim.id +
+            " · " + nombreJuego(scrim.juego) +
+            " · " + scrim.formato +
+            " · " + scrim.region;
+
+        recomendacionScrim.add(
+            new Option(descripcion, String(scrim.id))
+        );
+    });
+
+    const sigueDisponible = disponibles.some(
+        scrim => String(scrim.id) === seleccionAnterior
+    );
+
+    recomendacionScrim.value = sigueDisponible
+        ? seleccionAnterior
+        : "";
 }
 
 function mostrarScrims() {
@@ -615,8 +754,9 @@ function mostrarScrims() {
         return coincideTexto && coincideJuego && coincideRegion;
     });
 
-    contador.textContent =
-        filtrados.length === 1 ? "1 partida" : filtrados.length + " partidas";
+    contador.textContent = filtrados.length === 1
+        ? "1 partida"
+        : filtrados.length + " partidas";
 
     estadoCarga.textContent = "Datos del servidor eScrims";
 
@@ -636,10 +776,15 @@ function mostrarScrims() {
 async function cargarScrims() {
     estadoCarga.textContent = "Cargando partidas...";
 
-    // la primera vez se muestra la mascota saltando
     if (!scrimsCargadas) {
-        mostrarMensaje(listaScrims, "Cargando partidas", "cargando");
-        listaScrims.querySelector(".message-card p").classList.add("puntos");
+        mostrarMensaje(
+            listaScrims,
+            "Cargando partidas",
+            "cargando"
+        );
+
+        listaScrims.querySelector(".message-card p")
+            .classList.add("puntos");
     }
 
     try {
@@ -653,6 +798,7 @@ async function cargarScrims() {
         scrimsCargadas = true;
 
         actualizarFiltros();
+        actualizarPartidasRecomendaciones();
         mostrarScrims();
 
     } catch (error) {
@@ -675,13 +821,18 @@ async function postular(scrim, boton) {
     boton.textContent = "ENVIANDO...";
 
     try {
-        await enviarFormulario("/api/postulaciones", { scrimId: scrim.id });
+        await enviarFormulario("/api/postulaciones", {
+            scrimId: scrim.id
+        });
 
         notificar(
             "exito",
             "Postulación enviada",
-            "Te postulaste a " + nombreJuego(scrim.juego) + " · " +
-            scrim.formato + " · " + scrim.region + ". El organizador la va a revisar."
+            "Te postulaste a " +
+            nombreJuego(scrim.juego) +
+            " · " + scrim.formato +
+            " · " + scrim.region +
+            ". El organizador la va a revisar."
         );
 
         await cargarPostulaciones();
@@ -701,10 +852,6 @@ async function postular(scrim, boton) {
     }
 }
 
-/* ==========================================================
-   cuenta
-   ========================================================== */
-
 function actualizarVistaCuenta() {
     const conSesion = usuario !== null;
     const esOrganizador = conSesion && usuario.rol === "ORGANIZADOR";
@@ -720,23 +867,48 @@ function actualizarVistaCuenta() {
 
     if (conSesion) {
         cuentaDescripcion.textContent =
-            "Sesión iniciada. Ya podés postularte desde la lista de partidas.";
+            usuario.rol === "ORGANIZADOR"
+                ? "Administrá las partidas y las solicitudes desde tu panel."
+                : "Sesión iniciada. Ya podés postularte desde la lista de partidas.";
 
         document.getElementById("perfilInicial").replaceChildren(
             crearAvatar(usuario.username)
         );
-        document.getElementById("perfilNombre").textContent = usuario.username;
-        document.getElementById("perfilRegion").textContent = usuario.region || "—";
+
+        document.getElementById("perfilNombre").textContent =
+            usuario.username;
+
+        document.getElementById("perfilRegion").textContent =
+            usuario.region || "—";
+
         document.getElementById("perfilRol").textContent =
-            usuario.rol === "ORGANIZADOR" ? "Organizador" : "Jugador";
-        document.getElementById("perfilId").textContent = "#" + usuario.id;
+            usuario.rol === "ORGANIZADOR"
+                ? "Organizador"
+                : "Jugador";
+
+        document.getElementById("perfilId").textContent =
+            "#" + usuario.id;
+
     } else {
         cuentaDescripcion.textContent = modoDemo
             ? "El acceso está deshabilitado en la demo pública."
             : "Iniciá sesión o creá una cuenta para postularte a partidas.";
+
         postulaciones = [];
         listaPostulaciones.replaceChildren();
         listaOrganizador.replaceChildren();
+
+        if (listaRecomendaciones) {
+            mostrarMensaje(
+                listaRecomendaciones,
+                "Seleccioná una partida para consultar las recomendaciones.",
+                "feliz"
+            );
+        }
+
+        if (formRecomendaciones) {
+            formRecomendaciones.reset();
+        }
     }
 
     mostrarScrims();
@@ -747,6 +919,7 @@ async function cargarSesion() {
     try {
         const datos = await api("/api/auth/me");
         usuario = datos && datos.autenticado ? datos : null;
+
     } catch (error) {
         usuario = null;
     }
@@ -788,8 +961,9 @@ async function enviarAcceso(evento, url, esRegistro) {
     const boton = formulario.querySelector("button[type='submit']");
     const datos = Object.fromEntries(new FormData(formulario));
 
-    const faltantes = [...formulario.querySelectorAll("[required]")]
-        .filter(campo => !String(campo.value).trim());
+    const faltantes = [
+        ...formulario.querySelectorAll("[required]")
+    ].filter(campo => !String(campo.value).trim());
 
     if (faltantes.length > 0) {
         notificar("error", "Faltan datos", "Completá todos los campos.");
@@ -805,11 +979,13 @@ async function enviarAcceso(evento, url, esRegistro) {
             "Contraseña muy corta",
             "La contraseña tiene que tener al menos 8 caracteres."
         );
+
         contrasena.focus();
         return;
     }
 
     const textoBoton = boton.textContent;
+
     boton.disabled = true;
     boton.textContent = "ENVIANDO...";
 
@@ -819,7 +995,8 @@ async function enviarAcceso(evento, url, esRegistro) {
         notificar(
             "exito",
             esRegistro ? "Cuenta creada" : "Sesión iniciada",
-            "Hola, " + usuario.username + ". Ya podés postularte a partidas."
+            "Hola, " + usuario.username +
+            ". Ya podés explorar las partidas."
         );
 
         formLogin.reset();
@@ -831,7 +1008,9 @@ async function enviarAcceso(evento, url, esRegistro) {
     } catch (error) {
         notificar(
             "error",
-            esRegistro ? "No se pudo crear la cuenta" : "No se pudo iniciar sesión",
+            esRegistro
+                ? "No se pudo crear la cuenta"
+                : "No se pudo iniciar sesión",
             error.message
         );
 
@@ -846,6 +1025,7 @@ async function cerrarSesion() {
 
     try {
         await enviarFormulario("/api/auth/logout", {});
+
     } catch (error) {
         console.error("Error al cerrar sesión:", error);
     }
@@ -854,23 +1034,30 @@ async function cerrarSesion() {
     usuario = null;
     actualizarVistaCuenta();
 
-    notificar("exito", "Sesión cerrada", "Hasta la próxima partida.");
+    notificar(
+        "exito",
+        "Sesión cerrada",
+        "Hasta la próxima partida."
+    );
 }
-
-/* ==========================================================
-   mis postulaciones
-   ========================================================== */
 
 function crearPostulacion(postulacion) {
     const tarjeta = crearElemento("article", "postulacion-card");
     const clase = claseEstado(postulacion.estado);
-
     const cabecera = crearElemento("div", "postulacion-cabecera");
-
     const titulo = crearElemento("div");
+
     titulo.append(
-        crearElemento("span", "postulacion-id", "POSTULACIÓN #" + postulacion.id),
-        crearElemento("h4", "postulacion-juego", nombreJuego(postulacion.juego))
+        crearElemento(
+            "span",
+            "postulacion-id",
+            "POSTULACIÓN #" + postulacion.id
+        ),
+        crearElemento(
+            "h4",
+            "postulacion-juego",
+            nombreJuego(postulacion.juego)
+        )
     );
 
     const estado = crearElemento(
@@ -882,6 +1069,7 @@ function crearPostulacion(postulacion) {
     cabecera.append(titulo, estado);
 
     const detalles = crearElemento("div", "postulacion-detalles");
+
     detalles.append(
         crearDetalle("Scrim", "#" + postulacion.scrimId),
         crearDetalle("Región", postulacion.region),
@@ -898,7 +1086,11 @@ function crearPostulacion(postulacion) {
     tarjeta.append(
         cabecera,
         detalles,
-        crearElemento("p", "postulacion-mensaje", mensajes[clase])
+        crearElemento(
+            "p",
+            "postulacion-mensaje",
+            mensajes[clase]
+        )
     );
 
     return tarjeta;
@@ -918,6 +1110,7 @@ async function cargarPostulaciones() {
                 listaPostulaciones,
                 "Todavía no te postulaste a ninguna partida."
             );
+
         } else {
             listaPostulaciones.replaceChildren(
                 ...postulaciones.map(crearPostulacion)
@@ -932,30 +1125,41 @@ async function cargarPostulaciones() {
             return;
         }
 
-        mostrarMensaje(listaPostulaciones, "No se pudieron cargar tus postulaciones.");
+        mostrarMensaje(
+            listaPostulaciones,
+            "No se pudieron cargar tus postulaciones."
+        );
     }
 }
-
-/* ==========================================================
-   panel organizador
-   ========================================================== */
 
 function crearSolicitud(solicitud) {
     const tarjeta = crearElemento("article", "organizador-card");
     const clase = claseEstado(solicitud.estado);
-
     const cabecera = crearElemento("div", "organizador-card-cabecera");
-
     const titulo = crearElemento("div");
+
     titulo.append(
-        crearElemento("span", "postulacion-id", "SOLICITUD #" + solicitud.id + " · SCRIM #" + solicitud.scrimId),
-        crearElemento("h4", "organizador-juego", nombreJuego(solicitud.juego)),
+        crearElemento(
+            "span",
+            "postulacion-id",
+            "SOLICITUD #" + solicitud.id +
+            " · SCRIM #" + solicitud.scrimId
+        ),
+        crearElemento(
+            "h4",
+            "organizador-juego",
+            nombreJuego(solicitud.juego)
+        ),
         (() => {
             const jugador = crearElemento("p", "organizador-jugador");
+
             jugador.append(
                 crearAvatar(solicitud.usuario),
-                document.createTextNode("Jugador: " + solicitud.usuario)
+                document.createTextNode(
+                    "Jugador: " + solicitud.usuario
+                )
             );
+
             return jugador;
         })()
     );
@@ -969,7 +1173,11 @@ function crearSolicitud(solicitud) {
         )
     );
 
-    const detalles = crearElemento("div", "organizador-card-detalles");
+    const detalles = crearElemento(
+        "div",
+        "organizador-card-detalles"
+    );
+
     detalles.append(
         crearDetalle("Región", solicitud.region),
         crearDetalle("Formato", solicitud.formato),
@@ -979,20 +1187,41 @@ function crearSolicitud(solicitud) {
     tarjeta.append(cabecera, detalles);
 
     if (clase === "pendiente") {
-        const acciones = crearElemento("div", "organizador-card-acciones");
+        const acciones = crearElemento(
+            "div",
+            "organizador-card-acciones"
+        );
 
-        const aceptar = crearElemento("button", "organizador-aceptar", "ACEPTAR");
+        const aceptar = crearElemento(
+            "button",
+            "organizador-aceptar",
+            "ACEPTAR"
+        );
+
         aceptar.type = "button";
 
-        const rechazar = crearElemento("button", "organizador-rechazar", "RECHAZAR");
+        const rechazar = crearElemento(
+            "button",
+            "organizador-rechazar",
+            "RECHAZAR"
+        );
+
         rechazar.type = "button";
 
         aceptar.addEventListener("click", () =>
-            gestionarSolicitud(solicitud, "aceptar", [aceptar, rechazar])
+            gestionarSolicitud(
+                solicitud,
+                "aceptar",
+                [aceptar, rechazar]
+            )
         );
 
         rechazar.addEventListener("click", () =>
-            gestionarSolicitud(solicitud, "rechazar", [aceptar, rechazar])
+            gestionarSolicitud(
+                solicitud,
+                "rechazar",
+                [aceptar, rechazar]
+            )
         );
 
         acciones.append(aceptar, rechazar);
@@ -1003,7 +1232,8 @@ function crearSolicitud(solicitud) {
             crearElemento(
                 "p",
                 "organizador-resuelto",
-                "Solicitud resuelta: " + String(solicitud.estado).toLowerCase() + "."
+                "Solicitud resuelta: " +
+                String(solicitud.estado).toLowerCase() + "."
             )
         );
     }
@@ -1021,24 +1251,36 @@ async function cargarOrganizador() {
         const solicitudes = Array.isArray(datos) ? datos : [];
 
         const contar = clase =>
-            solicitudes.filter(s => claseEstado(s.estado) === clase).length;
+            solicitudes.filter(
+                s => claseEstado(s.estado) === clase
+            ).length;
 
-        document.getElementById("resumenPendientes").textContent = contar("pendiente");
-        document.getElementById("resumenAceptadas").textContent = contar("aceptada");
-        document.getElementById("resumenRechazadas").textContent = contar("rechazada");
+        document.getElementById("resumenPendientes").textContent =
+            contar("pendiente");
+
+        document.getElementById("resumenAceptadas").textContent =
+            contar("aceptada");
+
+        document.getElementById("resumenRechazadas").textContent =
+            contar("rechazada");
 
         if (solicitudes.length === 0) {
-            mostrarMensaje(listaOrganizador, "Todavía no llegaron solicitudes.", "feliz");
+            mostrarMensaje(
+                listaOrganizador,
+                "Todavía no llegaron solicitudes.",
+                "feliz"
+            );
             return;
         }
 
-        // pendientes primero
         solicitudes.sort((a, b) =>
             (claseEstado(a.estado) === "pendiente" ? 0 : 1) -
             (claseEstado(b.estado) === "pendiente" ? 0 : 1)
         );
 
-        listaOrganizador.replaceChildren(...solicitudes.map(crearSolicitud));
+        listaOrganizador.replaceChildren(
+            ...solicitudes.map(crearSolicitud)
+        );
 
     } catch (error) {
         if (error.status === 401) {
@@ -1046,7 +1288,10 @@ async function cargarOrganizador() {
             return;
         }
 
-        mostrarMensaje(listaOrganizador, "No se pudieron cargar las solicitudes.");
+        mostrarMensaje(
+            listaOrganizador,
+            "No se pudieron cargar las solicitudes."
+        );
     }
 }
 
@@ -1056,19 +1301,151 @@ async function gestionarSolicitud(solicitud, accion, botones) {
     });
 
     try {
-        await enviarFormulario("/api/organizador/postulaciones", {
-            postulacionId: solicitud.id,
-            accion
-        });
+        await enviarFormulario(
+            "/api/organizador/postulaciones",
+            {
+                postulacionId: solicitud.id,
+                accion
+            }
+        );
 
         notificar(
             "exito",
-            accion === "aceptar" ? "Jugador aceptado" : "Solicitud rechazada",
-            solicitud.usuario + " · " + nombreJuego(solicitud.juego)
+            accion === "aceptar"
+                ? "Jugador aceptado"
+                : "Solicitud rechazada",
+            solicitud.usuario +
+            " · " +
+            nombreJuego(solicitud.juego)
         );
 
         await cargarOrganizador();
         await cargarPostulaciones();
+        await cargarScrims();
+
+        if (recomendacionScrim && recomendacionScrim.value) {
+            await consultarRecomendaciones();
+        }
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        notificar(
+            "error",
+            "No se pudo procesar",
+            error.message
+        );
+
+        botones.forEach(boton => {
+            boton.disabled = false;
+        });
+    }
+}
+
+function actualizarCuposCrearScrim() {
+    if (!formatoCrearScrim || !cuposCrearScrim) {
+        return;
+    }
+
+    const cuposPorFormato = {
+        "1v1": 2,
+        "3v3": 6,
+        "5v5": 10
+    };
+
+    cuposCrearScrim.value =
+        cuposPorFormato[formatoCrearScrim.value] || 10;
+}
+
+async function crearNuevaScrim(evento) {
+    evento.preventDefault();
+
+    if (modoDemo || !usuario || usuario.rol !== "ORGANIZADOR") {
+        notificar(
+            "error",
+            "Acceso no permitido",
+            "Necesitás iniciar sesión como organizador."
+        );
+        return;
+    }
+
+    if (!formCrearScrim.reportValidity()) {
+        return;
+    }
+
+    const datos = Object.fromEntries(
+        new FormData(formCrearScrim)
+    );
+
+    const rangoMin = Number(datos.rangoMin);
+    const rangoMax = Number(datos.rangoMax);
+    const cupos = Number(datos.cupos);
+
+    if (rangoMin > rangoMax) {
+        notificar(
+            "error",
+            "Rangos inválidos",
+            "El rango mínimo no puede superar al máximo."
+        );
+        return;
+    }
+
+    const cuposPorFormato = {
+        "1v1": 2,
+        "3v3": 6,
+        "5v5": 10
+    };
+
+    if (cupos !== cuposPorFormato[datos.formato]) {
+        notificar(
+            "error",
+            "Cupos inválidos",
+            "La cantidad de jugadores no coincide con el formato."
+        );
+        return;
+    }
+
+    if (
+        !datos.fechaHora ||
+        Number.isNaN(new Date(datos.fechaHora).getTime()) ||
+        new Date(datos.fechaHora) <= new Date()
+    ) {
+        notificar(
+            "error",
+            "Fecha inválida",
+            "Elegí una fecha y hora posteriores a la actual."
+        );
+        return;
+    }
+
+    const textoOriginal = botonCrearScrim.textContent;
+
+    botonCrearScrim.disabled = true;
+    botonCrearScrim.textContent = "CREANDO...";
+
+    try {
+        const nuevaPartida = await enviarFormulario(
+            "/api/scrims",
+            datos
+        );
+
+        notificar(
+            "exito",
+            "Partida creada",
+            "La scrim #" + nuevaPartida.id +
+            " ya está disponible para recibir jugadores."
+        );
+
+        formCrearScrim.reset();
+        actualizarCuposCrearScrim();
+
+        busqueda.value = "";
+        filtroJuego.value = "";
+        filtroRegion.value = "";
+
         await cargarScrims();
 
     } catch (error) {
@@ -1077,17 +1454,202 @@ async function gestionarSolicitud(solicitud, accion, botones) {
             return;
         }
 
-        notificar("error", "No se pudo procesar", error.message);
+        notificar(
+            "error",
+            "No se pudo crear la partida",
+            error.message
+        );
 
-        botones.forEach(boton => {
-            boton.disabled = false;
-        });
+    } finally {
+        botonCrearScrim.disabled = false;
+        botonCrearScrim.textContent = textoOriginal;
     }
 }
 
-/* ==========================================================
-   indicador de sección
-   ========================================================== */
+function crearTarjetaRecomendacion(candidato) {
+    const tarjeta = crearElemento(
+        "article",
+        "organizador-card recomendacion-card"
+    );
+
+    const cabecera = crearElemento(
+        "div",
+        "organizador-card-cabecera"
+    );
+
+    const titulo = crearElemento("div");
+
+    titulo.append(
+        crearElemento(
+            "span",
+            "postulacion-id",
+            "RECOMENDACIÓN #" + candidato.posicion
+        )
+    );
+
+    const jugador = crearElemento(
+        "p",
+        "organizador-jugador"
+    );
+
+    jugador.append(
+        crearAvatar(candidato.usuario),
+        document.createTextNode(candidato.usuario)
+    );
+
+    titulo.append(jugador);
+
+    const estado = crearElemento(
+        "span",
+        "postulacion-estado aceptada",
+        "COMPATIBLE"
+    );
+
+    cabecera.append(titulo, estado);
+
+    const detalles = crearElemento(
+        "div",
+        "organizador-card-detalles"
+    );
+
+    detalles.append(
+        crearDetalle("Rango", candidato.rango),
+        crearDetalle("Ping", candidato.latencia + " ms"),
+        crearDetalle(
+            "Compatibilidad",
+            candidato.compatibilidad + "%"
+        ),
+        crearDetalle("Abandonos", candidato.abandonos)
+    );
+
+    const identificador = crearElemento(
+        "p",
+        "organizador-resuelto",
+        "JUGADOR #" + candidato.usuarioId
+    );
+
+    tarjeta.append(cabecera, detalles, identificador);
+
+    return tarjeta;
+}
+
+async function consultarRecomendaciones() {
+    if (!formRecomendaciones || !listaRecomendaciones) {
+        return;
+    }
+
+    if (!usuario || usuario.rol !== "ORGANIZADOR") {
+        notificar(
+            "error",
+            "Acceso no permitido",
+            "Solo el organizador puede consultar recomendaciones."
+        );
+        return;
+    }
+
+    if (!formRecomendaciones.reportValidity()) {
+        return;
+    }
+
+    const scrimId = Number(recomendacionScrim.value);
+    const compatibilidadMinima = Number(
+        recomendacionCompatibilidad.value
+    );
+
+    if (!Number.isInteger(scrimId) || scrimId <= 0) {
+        notificar(
+            "error",
+            "Seleccioná una partida",
+            "Elegí la scrim que querés consultar."
+        );
+        return;
+    }
+
+    if (
+        !Number.isInteger(compatibilidadMinima) ||
+        compatibilidadMinima < 0 ||
+        compatibilidadMinima > 100
+    ) {
+        notificar(
+            "error",
+            "Compatibilidad inválida",
+            "Ingresá un valor entre 0 y 100."
+        );
+        return;
+    }
+
+    botonRecomendaciones.disabled = true;
+    botonRecomendaciones.textContent = "BUSCANDO...";
+
+    mostrarMensaje(
+        listaRecomendaciones,
+        "Buscando jugadores compatibles...",
+        "cargando"
+    );
+
+    const parametros = new URLSearchParams({
+        scrimId: String(scrimId),
+        compatibilidadMinima: String(compatibilidadMinima)
+    });
+
+    try {
+        // consulta el ranking generado por hybridstrategy
+        const candidatos = await api(
+            "/api/organizador/recomendaciones?" + parametros
+        );
+
+        if (!Array.isArray(candidatos)) {
+            throw new Error("Respuesta inesperada del servidor");
+        }
+
+        if (candidatos.length === 0) {
+            mostrarMensaje(
+                listaRecomendaciones,
+                "No hay jugadores compatibles para esta partida.",
+                "triste",
+                "REVISÁ LAS POSTULACIONES Y LAS MÉTRICAS"
+            );
+            return;
+        }
+
+        listaRecomendaciones.replaceChildren(
+            ...candidatos.map(crearTarjetaRecomendacion)
+        );
+
+        notificar(
+            "exito",
+            "Matchmaking completado",
+            candidatos.length === 1
+                ? "Encontramos 1 jugador compatible."
+                : "Encontramos " +
+                candidatos.length +
+                " jugadores compatibles."
+        );
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        mostrarMensaje(
+            listaRecomendaciones,
+            "No se pudieron consultar las recomendaciones.",
+            "triste",
+            error.message
+        );
+
+        notificar(
+            "error",
+            "Error de matchmaking",
+            error.message
+        );
+
+    } finally {
+        botonRecomendaciones.disabled = false;
+        botonRecomendaciones.textContent = "BUSCAR JUGADORES";
+    }
+}
 
 const header = document.querySelector(".header");
 const indicador = document.querySelector(".section-indicator");
@@ -1099,7 +1661,10 @@ let indicadorPendiente = false;
 
 function seccionesVisibles() {
     return [...document.querySelectorAll("[data-seccion]")]
-        .filter(seccion => !seccion.hidden && seccion.offsetParent !== null);
+        .filter(seccion =>
+            !seccion.hidden &&
+            seccion.offsetParent !== null
+        );
 }
 
 function marcarEnlace(id) {
@@ -1111,12 +1676,15 @@ function marcarEnlace(id) {
         if (activo) {
             enlace.setAttribute("aria-current", "location");
 
-            // en celular el menú se desliza: llevar el link activo a la vista
             const menu = enlace.parentElement;
 
             if (menu.scrollWidth > menu.clientWidth) {
-                menu.scrollTo({ left: enlace.offsetLeft - 16, behavior: "smooth" });
+                menu.scrollTo({
+                    left: enlace.offsetLeft - 16,
+                    behavior: "smooth"
+                });
             }
+
         } else {
             enlace.removeAttribute("aria-current");
         }
@@ -1124,8 +1692,11 @@ function marcarEnlace(id) {
 }
 
 function escribirIndicador(seccion) {
-    indicador.querySelector(".indicator-round").textContent = seccion.dataset.ronda || "";
-    indicador.querySelector(".indicator-label").textContent = seccion.dataset.seccion;
+    indicador.querySelector(".indicator-round").textContent =
+        seccion.dataset.ronda || "";
+
+    indicador.querySelector(".indicator-label").textContent =
+        seccion.dataset.seccion;
 }
 
 function mostrarSeccion(seccion) {
@@ -1134,6 +1705,7 @@ function mostrarSeccion(seccion) {
     }
 
     const primeraVez = seccionActual === null;
+
     seccionActual = seccion;
     marcarEnlace(seccion.id);
 
@@ -1149,7 +1721,9 @@ function mostrarSeccion(seccion) {
         escribirIndicador(seccion);
         indicador.classList.remove("saliendo");
         indicador.classList.add("entrando");
+
         void indicador.offsetWidth;
+
         indicador.classList.remove("entrando");
     }, 180);
 }
@@ -1165,7 +1739,6 @@ function actualizarIndicador() {
         return;
     }
 
-    // la sección activa es la última que pasó el 40% de la pantalla
     const linea = window.innerHeight * 0.4;
     let elegida = secciones[0];
 
@@ -1184,8 +1757,14 @@ function actualizarIndicador() {
     mostrarSeccion(elegida);
 
     const recorrido = alto - window.innerHeight;
-    const progreso = recorrido > 0 ? window.scrollY / recorrido : 0;
-    header.style.setProperty("--progreso", progreso.toFixed(4));
+    const progreso = recorrido > 0
+        ? window.scrollY / recorrido
+        : 0;
+
+    header.style.setProperty(
+        "--progreso",
+        progreso.toFixed(4)
+    );
 }
 
 window.addEventListener("scroll", () => {
@@ -1203,10 +1782,6 @@ window.addEventListener("scroll", () => {
 
 window.addEventListener("resize", actualizarIndicador);
 
-/* ==========================================================
-   terminal de "Cómo funciona": se anima al entrar en pantalla
-   ========================================================== */
-
 function animarTerminal() {
     const terminal = document.querySelector(".workflow-terminal");
 
@@ -1214,13 +1789,19 @@ function animarTerminal() {
         return;
     }
 
-    const contadorTerminal = terminal.querySelector(".workflow-progress-info strong");
+    const contadorTerminal = terminal.querySelector(
+        ".workflow-progress-info strong"
+    );
+
     const objetivo = 7;
 
     function arrancar() {
         terminal.classList.add("visible");
 
-        if (!contadorTerminal || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        if (
+            !contadorTerminal ||
+            matchMedia("(prefers-reduced-motion: reduce)").matches
+        ) {
             return;
         }
 
@@ -1252,10 +1833,6 @@ function animarTerminal() {
     observador.observe(terminal);
 }
 
-/* ==========================================================
-   easter egg: ↑ ↑ ↓ ↓ ← → ← → B A
-   ========================================================== */
-
 function activarKonami() {
     const secuencia = [
         "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown",
@@ -1267,16 +1844,18 @@ function activarKonami() {
     let enCurso = false;
 
     document.addEventListener("keydown", evento => {
-        // no interferir mientras se escribe en un formulario
         if (evento.target.closest("input, select, textarea")) {
             posicion = 0;
             return;
         }
 
-        const tecla = evento.key.length === 1 ? evento.key.toLowerCase() : evento.key;
+        const tecla = evento.key.length === 1
+            ? evento.key.toLowerCase()
+            : evento.key;
 
         if (tecla === secuencia[posicion]) {
             posicion++;
+
         } else {
             posicion = tecla === secuencia[0] ? 1 : 0;
         }
@@ -1286,6 +1865,7 @@ function activarKonami() {
 
             if (!enCurso) {
                 enCurso = true;
+
                 lanzarKonami(() => {
                     enCurso = false;
                 });
@@ -1314,10 +1894,6 @@ function lanzarKonami(alTerminar) {
     }, 3200);
 }
 
-/* ==========================================================
-   eventos e inicio
-   ========================================================== */
-
 busqueda.addEventListener("input", mostrarScrims);
 filtroJuego.addEventListener("change", mostrarScrims);
 filtroRegion.addEventListener("change", mostrarScrims);
@@ -1341,6 +1917,42 @@ formRegistro.addEventListener("submit", evento =>
 cerrarSesionBoton.addEventListener("click", cerrarSesion);
 actualizarPostulacionesBoton.addEventListener("click", cargarPostulaciones);
 actualizarOrganizadorBoton.addEventListener("click", cargarOrganizador);
+
+if (formatoCrearScrim) {
+    formatoCrearScrim.addEventListener(
+        "change",
+        actualizarCuposCrearScrim
+    );
+
+    actualizarCuposCrearScrim();
+}
+
+if (formCrearScrim) {
+    formCrearScrim.addEventListener(
+        "submit",
+        crearNuevaScrim
+    );
+}
+
+if (formRecomendaciones) {
+    formRecomendaciones.addEventListener(
+        "submit",
+        evento => {
+            evento.preventDefault();
+            consultarRecomendaciones();
+        }
+    );
+}
+
+if (recomendacionScrim) {
+    recomendacionScrim.addEventListener("change", () => {
+        mostrarMensaje(
+            listaRecomendaciones,
+            "Presioná Buscar jugadores para consultar esta partida.",
+            "feliz"
+        );
+    });
+}
 
 actualizarIndicador();
 animarTerminal();

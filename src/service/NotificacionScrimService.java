@@ -13,15 +13,20 @@ public class NotificacionScrimService {
             new GestorEventosScrim();
 
     private final FabricaNotificadores fabrica;
+    private final ColaNotificaciones cola;
 
     public NotificacionScrimService(boolean produccion) {
 
         fabrica = produccion
                 ? new FabricaProduccion()
                 : new FabricaDesarrollo();
+
+        cola = new ColaNotificaciones(
+                gestor::notificar,
+                3
+        );
     }
 
-    // registra los canales que reciben los avisos
     public void configurar(
             String jugador,
             String organizador
@@ -36,7 +41,6 @@ public class NotificacionScrimService {
         );
     }
 
-    // avisa cuando una partida cambia de estado
     public void notificarCambio(
             int scrimId,
             String juego,
@@ -55,6 +59,25 @@ public class NotificacionScrimService {
                 estadoNuevo
         );
 
-        gestor.notificar(evento);
+        cola.agregar(evento);
+
+        // intenta enviar los avisos pendientes
+        for (int i = 0; i < 3
+                && cola.cantidadPendientes() > 0; i++) {
+
+            cola.procesarPendientes();
+        }
+    }
+
+    public int notificacionesPendientes() {
+        return cola.cantidadPendientes();
+    }
+
+    public int notificacionesEnviadas() {
+        return cola.cantidadEnviadas();
+    }
+
+    public int notificacionesFallidas() {
+        return cola.cantidadFallidas();
     }
 }

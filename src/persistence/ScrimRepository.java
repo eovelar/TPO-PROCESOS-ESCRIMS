@@ -6,6 +6,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,7 +28,7 @@ public class ScrimRepository {
             String estado
     ) {}
 
-    // obtiene las partidas y calcula los cupos disponibles
+    // obtiene las partidas y calcula sus cupos disponibles
     public List<ScrimGuardado> listar() throws SQLException {
 
         String sql = """
@@ -58,7 +60,112 @@ public class ScrimRepository {
         return partidas;
     }
 
-    // convierte cada fila de la base en un registro de java
+    // registra una partida y devuelve su id
+    public int crear(
+            Integer creadorId,
+            String juego,
+            String formato,
+            String region,
+            int rangoMin,
+            int rangoMax,
+            int latenciaMax,
+            LocalDateTime fechaHora,
+            int duracion,
+            int cupos
+    ) throws SQLException {
+
+        if (juego == null || juego.isBlank()
+                || formato == null || formato.isBlank()
+                || region == null || region.isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Completa los datos de la partida"
+            );
+        }
+
+        if (rangoMin < 1 || rangoMax > 10
+                || rangoMin > rangoMax) {
+
+            throw new IllegalArgumentException(
+                    "Los rangos no son validos"
+            );
+        }
+
+        if (latenciaMax <= 0 || duracion <= 0 || cupos <= 0) {
+
+            throw new IllegalArgumentException(
+                    "Los valores deben ser positivos"
+            );
+        }
+
+        if (fechaHora == null
+                || !fechaHora.isAfter(LocalDateTime.now())) {
+
+            throw new IllegalArgumentException(
+                    "La fecha de la partida debe ser futura"
+            );
+        }
+
+        String sql = """
+                INSERT INTO public.scrims (
+                    creador_id,
+                    juego,
+                    formato,
+                    region,
+                    rango_min,
+                    rango_max,
+                    latencia_max,
+                    fecha_hora,
+                    duracion,
+                    cupos,
+                    estado
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+                """;
+
+        try (Connection conexion = ConexionBD.conectar();
+             PreparedStatement consulta =
+                     conexion.prepareStatement(sql)) {
+
+            // la cuenta de prueba no tiene un registro en supabase
+            if (creadorId == null) {
+                consulta.setNull(1, Types.INTEGER);
+            } else {
+                consulta.setInt(1, creadorId);
+            }
+
+            consulta.setString(2, juego.trim());
+            consulta.setString(3, formato.trim());
+            consulta.setString(4, region.trim());
+
+            consulta.setInt(5, rangoMin);
+            consulta.setInt(6, rangoMax);
+            consulta.setInt(7, latenciaMax);
+
+            consulta.setTimestamp(
+                    8,
+                    Timestamp.valueOf(fechaHora)
+            );
+
+            consulta.setInt(9, duracion);
+            consulta.setInt(10, cupos);
+            consulta.setString(11, "Buscando jugadores");
+
+            // postgres asigna el id de la nueva partida
+            try (ResultSet resultado = consulta.executeQuery()) {
+
+                if (resultado.next()) {
+                    return resultado.getInt("id");
+                }
+            }
+
+            throw new SQLException(
+                    "No se pudo crear la partida"
+            );
+        }
+    }
+
     private ScrimGuardado convertir(ResultSet rs)
             throws SQLException {
 

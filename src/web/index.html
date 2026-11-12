@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -68,7 +69,7 @@
                         </a>
 
                         <svg class="sticker sticker-cursor" viewBox="0 0 12 18" shape-rendering="crispEdges" aria-hidden="true">
-                            <path fill="#120d1f" d="M0 0h1v1H0zM0 1h2v1H0zM0 2h1v1H0zM2 2h1v1H2zM0 3h1v1H0zM3 3h1v1H3zM0 4h1v1H0zM4 4h1v1H4zM0 5h1v1H0zM5 5h1v1H5zM0 6h1v1H0zM6 6h1v1H6zM0 7h1v1H0zM7 7h1v1H7zM0 8h1v1H0zM8 8h1v1H8zM0 9h1v1H0zM9 9h1v1H9zM0 10h1v1H0zM6 10h4v1H6zM0 11h1v1H0zM3 11h1v1H3zM6 11h1v1H6zM0 12h1v1H0zM2 12h1v1H2zM4 12h1v1H4zM7 12h1v1H7zM0 13h2v1H0zM4 13h1v1H4zM7 13h1v1H7zM5 14h1v1H5zM8 14h1v1H8zM5 15h1v1H5zM8 15h1v1H8zM6 16h2v1H6z"/>
+                            <path fill="#120d1f" d="M0 0h1v1H0zM0 1h2v1H0zM0 2h1v1H0zM2 2h1v1H2zM0 3h1v1H0zM3 3h1v1H3zM0 4h1v1H0zM4 4h1v1H4zM0 5h1v1H0zM5 5h1v1H5zM0 6h1v1H0zM6 6h1v1H6zM0 7h1v1H7zM0 8h1v1H0zM8 8h1v1H8zM0 9h1v1H0zM9 9h1v1H9zM0 10h1v1H0zM6 10h4v1H6zM0 11h1v1H0zM3 11h1v1H3zM6 11h1v1H6zM0 12h1v1H0zM2 12h1v1H2zM4 12h1v1H4zM7 12h1v1H7zM0 13h2v1H0zM4 13h1v1H4zM7 13h1v1H7zM5 14h1v1H5zM8 14h1v1H8zM5 15h1v1H5zM8 15h1v1H8zM6 16h2v1H6z"/>
                             <path fill="#ffffff" d="M1 2h1v1H1zM1 3h2v1H1zM1 4h3v1H1zM1 5h4v1H1zM1 6h5v1H1zM1 7h6v1H1zM1 8h7v1H1zM1 9h8v1H1zM1 10h5v1H1zM1 11h2v1H1zM4 11h2v1H4zM1 12h1v1H1zM5 12h2v1H5zM5 13h2v1H5zM6 14h2v1H6zM6 15h2v1H6z"/>
                         </svg>
 
@@ -512,6 +513,221 @@
                     <span>Rechazadas</span>
                 </div>
             </div>
+
+            <!-- creación de partidas -->
+
+            <div class="organizador-card crear-scrim-panel">
+
+                <div class="organizador-encabezado">
+                    <div>
+                        <h3>Crear nueva partida</h3>
+
+                        <p class="section-description">
+                            Configurá una scrim y publicala para recibir jugadores.
+                        </p>
+                    </div>
+                </div>
+
+                <form id="formCrearScrim">
+
+                    <div class="campos-dobles">
+
+                        <div class="filter-field">
+                            <label for="scrimJuego">Juego</label>
+
+                            <select id="scrimJuego" name="juego" required>
+                                <option value="Valorant">Valorant</option>
+                                <option value="LoL">League of Legends</option>
+                                <option value="CS2">Counter-Strike 2</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimFormato">Formato</label>
+
+                            <select id="scrimFormato" name="formato" required>
+                                <option value="5v5">5v5</option>
+                                <option value="3v3">3v3</option>
+                                <option value="1v1">1v1</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimRegion">Región</label>
+
+                            <select id="scrimRegion" name="region" required>
+                                <option value="LAS">LAS</option>
+                                <option value="LAN">LAN</option>
+                                <option value="BR">BR</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimFechaHora">Fecha y hora</label>
+
+                            <input
+                                    type="datetime-local"
+                                    id="scrimFechaHora"
+                                    name="fechaHora"
+                                    required
+                            >
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimRangoMin">Rango mínimo</label>
+
+                            <input
+                                    type="number"
+                                    id="scrimRangoMin"
+                                    name="rangoMin"
+                                    min="1"
+                                    max="10"
+                                    value="3"
+                                    required
+                            >
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimRangoMax">Rango máximo</label>
+
+                            <input
+                                    type="number"
+                                    id="scrimRangoMax"
+                                    name="rangoMax"
+                                    min="1"
+                                    max="10"
+                                    value="7"
+                                    required
+                            >
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimLatencia">Latencia máxima (ms)</label>
+
+                            <input
+                                    type="number"
+                                    id="scrimLatencia"
+                                    name="latenciaMax"
+                                    min="1"
+                                    value="80"
+                                    required
+                            >
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimDuracion">Duración (minutos)</label>
+
+                            <input
+                                    type="number"
+                                    id="scrimDuracion"
+                                    name="duracion"
+                                    min="1"
+                                    value="60"
+                                    required
+                            >
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="scrimCupos">Cupos totales</label>
+
+                            <input
+                                    type="number"
+                                    id="scrimCupos"
+                                    name="cupos"
+                                    value="10"
+                                    readonly
+                                    required
+                            >
+                        </div>
+
+                    </div>
+
+                    <button
+                            type="submit"
+                            class="postular-button"
+                            id="botonCrearScrim"
+                    >
+                        CREAR PARTIDA
+                    </button>
+
+                </form>
+
+            </div>
+
+            <!-- matchmaking híbrido -->
+
+            <div class="organizador-card recomendaciones-panel">
+
+                <div class="organizador-encabezado">
+                    <div>
+                        <h3>Jugadores recomendados</h3>
+
+                        <p class="section-description">
+                            Consultá los candidatos más compatibles para cada partida.
+                        </p>
+                    </div>
+                </div>
+
+                <form id="formRecomendaciones">
+
+                    <div class="campos-dobles">
+
+                        <div class="filter-field">
+                            <label for="recomendacionScrim">Partida</label>
+
+                            <select
+                                    id="recomendacionScrim"
+                                    name="scrimId"
+                                    required
+                            >
+                                <option value="">
+                                    Seleccioná una partida
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="filter-field">
+                            <label for="recomendacionCompatibilidad">
+                                Compatibilidad mínima (%)
+                            </label>
+
+                            <input
+                                    type="number"
+                                    id="recomendacionCompatibilidad"
+                                    name="compatibilidadMinima"
+                                    min="0"
+                                    max="100"
+                                    value="70"
+                                    required
+                            >
+                        </div>
+
+                    </div>
+
+                    <button
+                            type="submit"
+                            class="postular-button"
+                            id="botonRecomendaciones"
+                    >
+                        BUSCAR JUGADORES
+                    </button>
+
+                </form>
+
+                <div
+                        id="listaRecomendaciones"
+                        class="lista-organizador"
+                        aria-live="polite"
+                        aria-label="Resultados del matchmaking"
+                >
+                    <div class="message-card">
+                        Seleccioná una partida para consultar las recomendaciones.
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- solicitudes de jugadores -->
 
             <div class="organizador-barra">
                 <h3>Solicitudes recibidas</h3>

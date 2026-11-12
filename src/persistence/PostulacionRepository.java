@@ -1,11 +1,18 @@
 
 package persistence;
 
+import domain.Scrim;
+import domain.Usuario;
+import matchmaking.Candidato;
+import matchmaking.HybridStrategy;
+import matchmaking.MatchmakingService;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,7 +40,6 @@ public class PostulacionRepository {
             JOIN public.scrims s ON s.id = p.scrim_id
             """;
 
-    // guarda una nueva postulación y valida los requisitos
     public int guardar(
             int usuarioId,
             int scrimId,
@@ -45,12 +51,12 @@ public class PostulacionRepository {
             conexion.setAutoCommit(false);
 
             try {
-                // bloquea la partida mientras se registra la solicitud
                 String partidaSql = """
                         SELECT id, region, rango_min, rango_max,
                                cupos, estado
                         FROM public.scrims
-                        WHERE id = ? FOR UPDATE
+                        WHERE id = ?
+                        FOR UPDATE
                         """;
 
                 String region;
@@ -86,7 +92,6 @@ public class PostulacionRepository {
                     );
                 }
 
-                // comprueba que el jugador cumpla con región y rango
                 String usuarioSql = """
                         SELECT region, rango
                         FROM public.usuarios
@@ -124,7 +129,6 @@ public class PostulacionRepository {
                     }
                 }
 
-                // evita que el mismo usuario se postule dos veces
                 String duplicadaSql = """
                         SELECT 1
                         FROM public.postulaciones
@@ -155,7 +159,6 @@ public class PostulacionRepository {
                     );
                 }
 
-                // supabase genera el id de la nueva postulación
                 String insertar = """
                         INSERT INTO public.postulaciones
                             (usuario_id, scrim_id, rol_deseado, estado)
@@ -188,15 +191,12 @@ public class PostulacionRepository {
                 return id;
 
             } catch (SQLException | RuntimeException e) {
-
-                // revierte los cambios si falla alguna validación
                 conexion.rollback();
                 throw e;
             }
         }
     }
 
-    // recupera las solicitudes de un jugador
     public List<PostulacionGuardada> listarPorUsuario(
             int usuarioId
     ) throws SQLException {
@@ -223,7 +223,6 @@ public class PostulacionRepository {
         return lista;
     }
 
-    // recupera todas las solicitudes para el organizador
     public List<PostulacionGuardada> listarTodas()
             throws SQLException {
 
@@ -244,7 +243,158 @@ public class PostulacionRepository {
         return lista;
     }
 
-    // acepta o rechaza una solicitud pendiente
+    // busca postulantes pendientes y los ordena con strategy
+    public List<Candidato> buscarCandidatosCompatibles(
+            int scrimId,
+            int compatibilidadMinima
+    ) throws SQLException {
+
+        if (compatibilidadMinima < 0 ||
+                compatibilidadMinima > 100) {
+            throw new IllegalArgumentException(
+                    "La compatibilidad debe estar entre 0 y 100"
+            );
+        }
+
+        try (Connection conexion = ConexionBD.conectar()) {
+
+            String scrimSql = """
+                    SELECT id, juego, formato, region,
+                           rango_min, rango_max, latencia_max,
+                           fecha_hora, duracion, cupos, estado
+                    FROM public.scrims
+                    WHERE id = ?
+                    """;
+
+            Scrim scrim;
+            int rangoMin;
+            int rangoMax;
+            int latenciaMax;
+
+            try (PreparedStatement consulta =
+                         conexion.prepareStatement(scrimSql)) {
+
+                consulta.setInt(1, scrimId);
+
+                try (ResultSet rs = consulta.executeQuery()) {
+
+                    if (!rs.next()) {
+                        throw new IllegalArgumentException(
+                                "Partida no encontrada"
+                        );
+                    }
+
+                    if (!"Buscando jugadores".equals(
+                            rs.getString("estado"))) {
+                        throw new IllegalStateException(
+                                "La partida ya no admite jugadores"
+                        );
+                    }
+
+                    rangoMin = rs.getInt("rango_min");
+                    rangoMax = rs.getInt("rango_max");
+                    latenciaMax = rs.getInt("latencia_max");
+
+                    Timestamp fecha = rs.getTimestamp("fecha_hora");
+
+                    if (fecha == null) {
+                        throw new IllegalStateException(
+                                "La partida no tiene fecha"
+                        );
+                    }
+
+                    scrim = new Scrim(
+                            rs.getInt("id"),
+                            rs.getString("juego"),
+                            rs.getString("formato"),
+                            rs.getString("region"),
+                            rangoMin,
+                            rangoMax,
+                            latenciaMax,
+                            fecha.toLocalDateTime(),
+                            rs.getInt("duracion"),
+                            rs.getInt("cupos")
+                    );
+                }
+            }
+
+            String candidatosSql = """
+                    SELECT u.id, u.username, u.email,
+                           u.password_hash, u.region, u.rango,
+                           u.latencia_ms, u.compatibilidad,
+                           u.abandonos
+                    FROM public.postulaciones p
+                    JOIN public.usuarios u
+                      ON u.id = p.usuario_id
+                    WHERE p.scrim_id = ?
+                      AND p.estado = 'Pendiente'
+                      AND u.latencia_ms IS NOT NULL
+                      AND u.compatibilidad IS NOT NULL
+                      AND u.abandonos IS NOT NULL
+                    ORDER BY p.id
+                    """;
+
+            List<Candidato> candidatos = new ArrayList<>();
+
+            try (PreparedStatement consulta =
+                         conexion.prepareStatement(candidatosSql)) {
+
+                consulta.setInt(1, scrimId);
+
+                try (ResultSet rs = consulta.executeQuery()) {
+
+                    while (rs.next()) {
+
+                        int latencia = rs.getInt("latencia_ms");
+                        int compatibilidad =
+                                rs.getInt("compatibilidad");
+                        int abandonos = rs.getInt("abandonos");
+
+                        if (latencia < 0 ||
+                                compatibilidad < 0 ||
+                                compatibilidad > 100 ||
+                                abandonos < 0) {
+                            continue;
+                        }
+
+                        Usuario jugador = new Usuario(
+                                rs.getInt("id"),
+                                rs.getString("username"),
+                                rs.getString("email"),
+                                rs.getString("password_hash"),
+                                rs.getString("region"),
+                                rs.getInt("rango")
+                        );
+
+                        candidatos.add(
+                                new Candidato(
+                                        jugador,
+                                        rs.getInt("rango"),
+                                        latencia,
+                                        compatibilidad,
+                                        abandonos
+                                )
+                        );
+                    }
+                }
+            }
+
+            MatchmakingService servicio = new MatchmakingService(
+                    new HybridStrategy(
+                            rangoMin,
+                            rangoMax,
+                            latenciaMax,
+                            compatibilidadMinima
+                    )
+            );
+
+            return servicio.buscarJugadores(
+                    candidatos,
+                    scrim
+            );
+        }
+    }
+
     public String procesar(
             int postulacionId,
             String accion
@@ -288,7 +438,6 @@ public class PostulacionRepository {
                     }
                 }
 
-                // bloquea la partida para evitar sobrepasar los cupos
                 int cupos;
                 String estadoPartida;
 
@@ -375,7 +524,6 @@ public class PostulacionRepository {
                     consulta.executeUpdate();
                 }
 
-                // cuando se completan los cupos, se arma el lobby
                 if ("aceptar".equals(accion) &&
                         cantidadAceptadas(conexion, scrimId) >= cupos) {
 
@@ -398,15 +546,12 @@ public class PostulacionRepository {
                 return estadoNuevo;
 
             } catch (SQLException | RuntimeException e) {
-
-                // mantiene los datos consistentes ante un error
                 conexion.rollback();
                 throw e;
             }
         }
     }
 
-    // cuenta los jugadores que ya fueron aceptados
     private int cantidadAceptadas(
             Connection conexion,
             int scrimId
@@ -425,7 +570,6 @@ public class PostulacionRepository {
             consulta.setInt(1, scrimId);
 
             try (ResultSet rs = consulta.executeQuery()) {
-
                 rs.next();
                 return rs.getInt(1);
             }
