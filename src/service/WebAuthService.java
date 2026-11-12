@@ -38,23 +38,80 @@ public class WebAuthService {
     private static final long DURACION_HORAS = 8;
 
     private final Usuario organizadorDemo;
+    private final Usuario organizadorProduccion;
+    private final String emailOrganizadorProduccion;
 
     public WebAuthService() {
 
-        String contrasenaDemo = generarContrasenaDemo();
+        boolean produccion = System.getenv("PORT") != null;
 
-        organizadorDemo = new Usuario(
-                999999,
-                "OrganizadorDemo",
-                "organizador@escrims.local",
-                generarHash(contrasenaDemo),
-                "LAS",
-                5
-        );
+        if (produccion) {
+            organizadorDemo = null;
 
-        System.out.println("Cuenta de organizador local:");
-        System.out.println("Email: organizador@escrims.local");
-        System.out.println("Contrasena: " + contrasenaDemo);
+            String email = System.getenv("ADMIN_EMAIL");
+            String contrasena = System.getenv("ADMIN_PASSWORD");
+
+            if (email != null && contrasena != null
+                    && !email.isBlank()
+                    && !contrasena.isBlank()) {
+
+                email = email.trim().toLowerCase();
+
+                if (!email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) {
+                    throw new IllegalStateException(
+                            "El email del organizador no es valido"
+                    );
+                }
+
+                if (contrasena.length() < 16) {
+                    throw new IllegalStateException(
+                            "La contrasena del organizador debe tener al menos 16 caracteres"
+                    );
+                }
+
+                emailOrganizadorProduccion = email;
+
+                organizadorProduccion = new Usuario(
+                        999999,
+                        "Organizador",
+                        email,
+                        generarHash(contrasena),
+                        "LAS",
+                        5
+                );
+
+                System.out.println(
+                        "Cuenta de organizador habilitada"
+                );
+
+            } else {
+                emailOrganizadorProduccion = null;
+                organizadorProduccion = null;
+
+                System.out.println(
+                        "Organizador no configurado en produccion"
+                );
+            }
+
+        } else {
+            emailOrganizadorProduccion = null;
+            organizadorProduccion = null;
+
+            String contrasenaDemo = generarContrasenaDemo();
+
+            organizadorDemo = new Usuario(
+                    999999,
+                    "OrganizadorDemo",
+                    "organizador@escrims.local",
+                    generarHash(contrasenaDemo),
+                    "LAS",
+                    5
+            );
+
+            System.out.println("Cuenta de organizador local:");
+            System.out.println("Email: organizador@escrims.local");
+            System.out.println("Contrasena: " + contrasenaDemo);
+        }
     }
 
     public synchronized Acceso registrar(
@@ -70,8 +127,8 @@ public class WebAuthService {
         String emailNormalizado =
                 email.trim().toLowerCase();
 
-        if (emailNormalizado.equals(
-                "organizador@escrims.local")) {
+        if (emailNormalizado.equals("organizador@escrims.local")
+                || emailNormalizado.equals(emailOrganizadorProduccion)) {
 
             throw new IllegalArgumentException(
                     "Ese email esta reservado"
@@ -132,13 +189,14 @@ public class WebAuthService {
         String emailNormalizado =
                 email.trim().toLowerCase();
 
-        if (emailNormalizado.equals(
-                "organizador@escrims.local")) {
+        if (emailNormalizado.equals("organizador@escrims.local")) {
 
-            if (!comprobarContrasena(
-                    contrasena,
-                    organizadorDemo.getPasswordHash()
-            )) {
+            if (organizadorDemo == null ||
+                    !comprobarContrasena(
+                            contrasena,
+                            organizadorDemo.getPasswordHash()
+                    )) {
+
                 throw new IllegalArgumentException(
                         "Email o contrasena incorrectos"
                 );
@@ -146,6 +204,25 @@ public class WebAuthService {
 
             return crearSesion(
                     organizadorDemo,
+                    "ORGANIZADOR"
+            );
+        }
+
+        if (emailNormalizado.equals(emailOrganizadorProduccion)) {
+
+            if (organizadorProduccion == null ||
+                    !comprobarContrasena(
+                            contrasena,
+                            organizadorProduccion.getPasswordHash()
+                    )) {
+
+                throw new IllegalArgumentException(
+                        "Email o contrasena incorrectos"
+                );
+            }
+
+            return crearSesion(
+                    organizadorProduccion,
                     "ORGANIZADOR"
             );
         }
@@ -169,6 +246,7 @@ public class WebAuthService {
                     contrasena,
                     usuario.getPasswordHash()
             )) {
+
                 throw new IllegalArgumentException(
                         "Email o contrasena incorrectos"
                 );

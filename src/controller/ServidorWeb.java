@@ -30,8 +30,7 @@ public class ServidorWeb {
 
     private final WebAuthService auth = new WebAuthService();
 
-    private final EscrimsFacade facade =
-            new EscrimsFacade();
+    private final EscrimsFacade facade = new EscrimsFacade();
 
     private final NotificacionScrimService notificaciones;
 
@@ -41,12 +40,19 @@ public class ServidorWeb {
     private final int puerto;
     private final boolean produccion;
     private final String origenPublico;
+    private final String emailAdministrador;
 
     public ServidorWeb(int puerto) throws IOException {
 
         this.puerto = puerto;
         this.produccion = System.getenv("PORT") != null;
         this.origenPublico = System.getenv("PUBLIC_ORIGIN");
+
+        String emailConfigurado = System.getenv("ADMIN_EMAIL");
+
+        this.emailAdministrador = emailConfigurado == null
+                ? null
+                : emailConfigurado.trim().toLowerCase(Locale.ROOT);
 
         if (produccion &&
                 (origenPublico == null || origenPublico.isBlank())) {
@@ -196,37 +202,34 @@ public class ServidorWeb {
 
             } else {
 
-                String email = datos.get("email");
-
-                if (produccion &&
-                        email != null &&
-                        email.trim().equalsIgnoreCase(
-                                "organizador@escrims.local"
-                        )) {
-
-                    error(
-                            ex,
-                            403,
-                            "Cuenta de demostracion no disponible"
-                    );
-                    return;
-                }
-
                 acceso = auth.iniciarSesion(
-                        email,
+                        datos.get("email"),
                         datos.get("password")
                 );
             }
 
-            if (produccion &&
-                    !"JUGADOR".equals(acceso.sesion().rol())) {
+            if ("ORGANIZADOR".equals(acceso.sesion().rol())
+                    && !esOrganizadorAutorizado(acceso.sesion())) {
 
                 auth.cerrarSesion(acceso.token());
 
                 error(
                         ex,
                         403,
-                        "Rol no habilitado en esta version"
+                        "Cuenta de organizador no autorizada"
+                );
+                return;
+            }
+
+            if (!"JUGADOR".equals(acceso.sesion().rol())
+                    && !"ORGANIZADOR".equals(acceso.sesion().rol())) {
+
+                auth.cerrarSesion(acceso.token());
+
+                error(
+                        ex,
+                        403,
+                        "Rol no habilitado"
                 );
                 return;
             }
@@ -354,27 +357,9 @@ public class ServidorWeb {
     private void crearScrim(HttpExchange ex)
             throws IOException {
 
-        WebAuthService.Sesion sesion = requerirSesion(ex);
+        WebAuthService.Sesion sesion = requerirOrganizador(ex);
 
         if (sesion == null) {
-            return;
-        }
-
-        if (!"ORGANIZADOR".equals(sesion.rol())) {
-            error(
-                    ex,
-                    403,
-                    "Solo el organizador puede crear partidas"
-            );
-            return;
-        }
-
-        if (produccion) {
-            error(
-                    ex,
-                    403,
-                    "Creacion de partidas no habilitada en produccion"
-            );
             return;
         }
 
@@ -440,6 +425,7 @@ public class ServidorWeb {
                     datos.getOrDefault("fechaHora", "")
             );
 
+            // la cuenta administradora no necesita registro en usuarios
             Integer creadorId = null;
 
             int id = facade.crearScrim(
@@ -508,6 +494,15 @@ public class ServidorWeb {
             switch (ex.getRequestMethod()) {
 
                 case "GET" -> {
+
+                    if (!"JUGADOR".equals(sesion.rol())) {
+                        error(
+                                ex,
+                                403,
+                                "Solo los jugadores pueden consultar sus postulaciones"
+                        );
+                        return;
+                    }
 
                     List<PostulacionRepository.PostulacionGuardada> lista =
                             facade.listarPostulacionesJugador(
@@ -600,25 +595,9 @@ public class ServidorWeb {
             return;
         }
 
-        if (produccion) {
-
-            error(
-                    ex,
-                    403,
-                    "Panel de organizador no habilitado en produccion"
-            );
-            return;
-        }
-
-        WebAuthService.Sesion sesion = requerirSesion(ex);
+        WebAuthService.Sesion sesion = requerirOrganizador(ex);
 
         if (sesion == null) {
-            return;
-        }
-
-        if (!"ORGANIZADOR".equals(sesion.rol())) {
-
-            error(ex, 403, "No tenes permisos");
             return;
         }
 
@@ -715,7 +694,6 @@ public class ServidorWeb {
         }
     }
 
-    // recomendaciones del matchmaking hibrido
     private void manejarRecomendaciones(HttpExchange ex)
             throws IOException {
 
@@ -731,27 +709,9 @@ public class ServidorWeb {
             return;
         }
 
-        if (produccion) {
-            error(
-                    ex,
-                    403,
-                    "Recomendaciones no habilitadas en produccion"
-            );
-            return;
-        }
-
-        WebAuthService.Sesion sesion = requerirSesion(ex);
+        WebAuthService.Sesion sesion = requerirOrganizador(ex);
 
         if (sesion == null) {
-            return;
-        }
-
-        if (!"ORGANIZADOR".equals(sesion.rol())) {
-            error(
-                    ex,
-                    403,
-                    "Solo el organizador puede consultar recomendaciones"
-            );
             return;
         }
 
@@ -784,7 +744,6 @@ public class ServidorWeb {
                     );
 
             StringBuilder json = new StringBuilder("[");
-
             int posicion = 1;
 
             for (Candidato candidato : recomendados) {
@@ -992,6 +951,55 @@ public class ServidorWeb {
         }
 
         return sesion;
+    }
+
+    private WebAuthService.Sesion requerirOrganizador(
+            HttpExchange ex
+    ) throws IOException {
+
+        WebAuthService.Sesion sesion = requerirSesion(ex);
+
+        if (sesion == null) {
+            return null;
+        }
+
+        if (!esOrganizadorAutorizado(sesion)) {
+            error(
+                    ex,
+                    403,
+                    "Solo el organizador autorizado puede acceder"
+            );
+            return null;
+        }
+
+        return sesion;
+    }
+
+    private boolean esOrganizadorAutorizado(
+            WebAuthService.Sesion sesion
+    ) {
+
+        if (sesion == null ||
+                !"ORGANIZADOR".equals(sesion.rol())) {
+            return false;
+        }
+
+        String email = sesion.usuario().getEmail();
+
+        if (email == null) {
+            return false;
+        }
+
+        if (!produccion) {
+            return email.equalsIgnoreCase(
+                    "organizador@escrims.local"
+            );
+        }
+
+        return emailAdministrador != null
+                && !emailAdministrador.isBlank()
+                && email.equalsIgnoreCase(emailAdministrador)
+                && sesion.usuario().getId() == 999999;
     }
 
     private String leerCookie(HttpExchange ex) {
