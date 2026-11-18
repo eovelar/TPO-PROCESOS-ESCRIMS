@@ -1,3 +1,4 @@
+
 document.documentElement.classList.add("js");
 
 const listaScrims = document.getElementById("listaScrims");
@@ -7,6 +8,11 @@ const estadoCarga = document.getElementById("estadoCarga");
 const busqueda = document.getElementById("busqueda");
 const filtroJuego = document.getElementById("filtroJuego");
 const filtroRegion = document.getElementById("filtroRegion");
+const filtroFormato = document.getElementById("filtroFormato");
+const filtroRango = document.getElementById("filtroRango");
+const filtroLatencia = document.getElementById("filtroLatencia");
+const filtroFecha = document.getElementById("filtroFecha");
+const filtroDisponibilidad = document.getElementById("filtroDisponibilidad");
 const limpiarFiltros = document.getElementById("limpiarFiltros");
 
 const formLogin = document.getElementById("formLogin");
@@ -91,6 +97,37 @@ function formatearFecha(fecha) {
         hour: "2-digit",
         minute: "2-digit"
     }).format(valor);
+}
+
+function fechaScrim(scrim) {
+    if (!scrim || !scrim.fecha) {
+        return null;
+    }
+
+    const texto = String(scrim.fecha).replace(/\.(\d{3})\d+$/, ".$1");
+    const fecha = new Date(texto);
+
+    return Number.isNaN(fecha.getTime()) ? null : fecha;
+}
+
+function scrimVencida(scrim) {
+    const fecha = fechaScrim(scrim);
+    return fecha !== null && fecha.getTime() < Date.now();
+}
+
+function scrimVigente(scrim) {
+    return !scrimVencida(scrim);
+}
+
+function limpiarBusquedaScrims() {
+    busqueda.value = "";
+    filtroJuego.value = "";
+    filtroRegion.value = "";
+    filtroFormato.value = "";
+    filtroRango.value = "";
+    filtroLatencia.value = "";
+    filtroFecha.value = "";
+    filtroDisponibilidad.value = "todas";
 }
 
 function crearDetalle(nombre, valor) {
@@ -497,7 +534,8 @@ function crearBotonPostular(scrim) {
 
     const disponible =
         scrim.estado === "Buscando jugadores" &&
-        scrim.cuposDisponibles > 0;
+        scrim.cuposDisponibles > 0 &&
+        scrimVigente(scrim);
 
     if (postulacion) {
         boton.textContent = postulacion.estado === "Pendiente"
@@ -510,7 +548,9 @@ function crearBotonPostular(scrim) {
     }
 
     if (!disponible) {
-        boton.textContent = "NO DISPONIBLE";
+        boton.textContent = scrimVencida(scrim)
+            ? "PARTIDA VENCIDA"
+            : "NO DISPONIBLE";
         boton.disabled = true;
         return boton;
     }
@@ -559,12 +599,15 @@ function crearTarjeta(scrim) {
         iconosJuegos[scrim.juego] || "ES"
     );
 
-    const buscando = scrim.estado === "Buscando jugadores";
+    const vencida = scrimVencida(scrim);
+    const buscando = scrim.estado === "Buscando jugadores" && !vencida;
 
     const estado = crearElemento(
         "span",
         buscando ? "status" : "status other",
-        buscando ? "BUSCANDO" : String(scrim.estado).toUpperCase()
+        vencida
+            ? "VENCIDA"
+            : buscando ? "BUSCANDO" : String(scrim.estado).toUpperCase()
     );
 
     superior.append(icono, estado);
@@ -586,6 +629,8 @@ function crearTarjeta(scrim) {
     detalles.append(
         crearDetalle("Región", scrim.region),
         crearDetalle("Formato", scrim.formato),
+        crearDetalle("Rango", scrim.rangoMin + "–" + scrim.rangoMax),
+        crearDetalle("Ping máximo", scrim.latenciaMax + " ms"),
         crearDetalle("Fecha", formatearFecha(scrim.fecha))
     );
 
@@ -745,6 +790,15 @@ function mostrarScrims() {
     const texto = busqueda.value.trim().toLowerCase();
     const juego = filtroJuego.value;
     const region = filtroRegion.value;
+    const formato = filtroFormato.value;
+    const rango = filtroRango.value === ""
+        ? null
+        : Number(filtroRango.value);
+    const ping = filtroLatencia.value === ""
+        ? null
+        : Number(filtroLatencia.value);
+    const fecha = filtroFecha.value;
+    const disponibilidad = filtroDisponibilidad.value;
 
     const filtrados = scrims.filter(scrim => {
         const coincideTexto =
@@ -753,8 +807,38 @@ function mostrarScrims() {
 
         const coincideJuego = !juego || scrim.juego === juego;
         const coincideRegion = !region || scrim.region === region;
+        const coincideFormato = !formato || scrim.formato === formato;
 
-        return coincideTexto && coincideJuego && coincideRegion;
+        const coincideRango = rango === null || (
+            rango >= Number(scrim.rangoMin) &&
+            rango <= Number(scrim.rangoMax)
+        );
+
+        // el ping del jugador debe estar dentro del máximo de la partida
+        const coincideLatencia = ping === null || (
+            Number.isFinite(ping) &&
+            ping >= 0 &&
+            ping <= Number(scrim.latenciaMax)
+        );
+
+        const coincideFecha = !fecha ||
+            String(scrim.fecha || "").slice(0, 10) === fecha;
+
+        const vencida = scrimVencida(scrim);
+
+        const coincideDisponibilidad =
+            disponibilidad === "todas" ||
+            (disponibilidad === "vigentes" && !vencida) ||
+            (disponibilidad === "vencidas" && vencida);
+
+        return coincideTexto &&
+            coincideJuego &&
+            coincideRegion &&
+            coincideFormato &&
+            coincideRango &&
+            coincideLatencia &&
+            coincideFecha &&
+            coincideDisponibilidad;
     });
 
     contador.textContent = filtrados.length === 1
@@ -768,7 +852,7 @@ function mostrarScrims() {
             listaScrims,
             "No encontramos partidas con esos filtros.",
             "triste",
-            "PROBÁ OTRO JUEGO O REGIÓN"
+            "PROBÁ OTRA COMBINACIÓN DE FILTROS"
         );
         return;
     }
@@ -969,7 +1053,11 @@ async function enviarAcceso(evento, url, esRegistro) {
     ].filter(campo => !String(campo.value).trim());
 
     if (faltantes.length > 0) {
-        notificar("error", "Faltan datos", "Completá todos los campos.");
+        notificar(
+            "error",
+            "Faltan datos",
+            "Completá todos los campos."
+        );
         faltantes[0].focus();
         return;
     }
@@ -1219,7 +1307,7 @@ async function confirmarParticipacion(scrimId, boton) {
 }
 
 async function cargarPostulaciones() {
-    if (!usuario) {
+    if (!usuario || usuario.rol !== "JUGADOR") {
         return;
     }
 
@@ -1730,9 +1818,7 @@ async function crearNuevaScrim(evento) {
         formCrearScrim.reset();
         actualizarCuposCrearScrim();
 
-        busqueda.value = "";
-        filtroJuego.value = "";
-        filtroRegion.value = "";
+        limpiarBusquedaScrims();
 
         await cargarScrims();
 
@@ -2185,12 +2271,14 @@ function lanzarKonami(alTerminar) {
 busqueda.addEventListener("input", mostrarScrims);
 filtroJuego.addEventListener("change", mostrarScrims);
 filtroRegion.addEventListener("change", mostrarScrims);
+filtroFormato.addEventListener("change", mostrarScrims);
+filtroRango.addEventListener("change", mostrarScrims);
+filtroLatencia.addEventListener("input", mostrarScrims);
+filtroFecha.addEventListener("change", mostrarScrims);
+filtroDisponibilidad.addEventListener("change", mostrarScrims);
 
 limpiarFiltros.addEventListener("click", () => {
-    busqueda.value = "";
-    filtroJuego.value = "";
-    filtroRegion.value = "";
-
+    limpiarBusquedaScrims();
     mostrarScrims();
 });
 

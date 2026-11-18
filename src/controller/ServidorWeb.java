@@ -1,3 +1,4 @@
+
 package controller;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -8,6 +9,7 @@ import matchmaking.Candidato;
 import persistence.LobbyRepository;
 import persistence.PostulacionRepository;
 import persistence.ScrimRepository;
+import service.LimitadorIntentos;
 import service.NotificacionScrimService;
 import service.WebAuthService;
 
@@ -33,8 +35,8 @@ import java.util.concurrent.TimeUnit;
 public class ServidorWeb {
 
     private final WebAuthService auth = new WebAuthService();
-
     private final EscrimsFacade facade = new EscrimsFacade();
+    private final LimitadorIntentos limitadorLogin = new LimitadorIntentos();
 
     private final NotificacionScrimService notificaciones;
 
@@ -61,6 +63,7 @@ public class ServidorWeb {
 
         if (produccion &&
                 (origenPublico == null || origenPublico.isBlank())) {
+
             throw new IllegalStateException(
                     "Falta configurar PUBLIC_ORIGIN"
             );
@@ -85,17 +88,14 @@ public class ServidorWeb {
         servidor.createContext("/health", this::health);
         servidor.createContext("/api/auth", this::manejarAuth);
         servidor.createContext("/api/scrims", this::manejarScrims);
-
         servidor.createContext(
                 "/api/postulaciones",
                 this::manejarPostulaciones
         );
-
         servidor.createContext(
                 "/api/organizador/postulaciones",
                 this::manejarOrganizador
         );
-
         servidor.createContext(
                 "/api/organizador/recomendaciones",
                 this::manejarRecomendaciones
@@ -201,6 +201,7 @@ public class ServidorWeb {
 
             Map<String, String> datos = formulario(ex);
             WebAuthService.Acceso acceso;
+            String claveIntentos = null;
 
             if (ruta.equals("/api/auth/register")) {
 
@@ -213,6 +214,27 @@ public class ServidorWeb {
                 );
 
             } else {
+
+                // limita los intentos de login
+                claveIntentos = claveLogin(
+                        ex,
+                        datos.get("email")
+                );
+
+                if (!limitadorLogin.permitirIntento(claveIntentos)) {
+
+                    ex.getResponseHeaders().set(
+                            "Retry-After",
+                            "900"
+                    );
+
+                    error(
+                            ex,
+                            429,
+                            "Demasiados intentos. Intenta nuevamente mas tarde"
+                    );
+                    return;
+                }
 
                 acceso = auth.iniciarSesion(
                         datos.get("email"),
@@ -238,12 +260,12 @@ public class ServidorWeb {
 
                 auth.cerrarSesion(acceso.token());
 
-                error(
-                        ex,
-                        403,
-                        "Rol no habilitado"
-                );
+                error(ex, 403, "Rol no habilitado");
                 return;
+            }
+
+            if (claveIntentos != null) {
+                limitadorLogin.reiniciar(claveIntentos);
             }
 
             ex.getResponseHeaders().add(
@@ -276,12 +298,26 @@ public class ServidorWeb {
         }
     }
 
+    private String claveLogin(
+            HttpExchange ex,
+            String email
+    ) {
+
+        String cuenta = email == null
+                ? ""
+                : email.trim().toLowerCase(Locale.ROOT);
+
+        String direccion = ex.getRemoteAddress()
+                .getAddress()
+                .getHostAddress();
+
+        return direccion + ":" + cuenta;
+    }
+
     private void manejarScrims(HttpExchange ex)
             throws IOException {
 
-        if (!ex.getRequestURI().getPath()
-                .equals("/api/scrims")) {
-
+        if (!ex.getRequestURI().getPath().equals("/api/scrims")) {
             error(ex, 404, "Ruta no encontrada");
             return;
         }
@@ -328,7 +364,16 @@ public class ServidorWeb {
                         .append("\",\"region\":\"")
                         .append(escapar(s.region()))
 
-                        .append("\",\"fecha\":\"")
+                        .append("\",\"rangoMin\":")
+                        .append(s.rangoMin())
+
+                        .append(",\"rangoMax\":")
+                        .append(s.rangoMax())
+
+                        .append(",\"latenciaMax\":")
+                        .append(s.latenciaMax())
+
+                        .append(",\"fecha\":\"")
                         .append(escapar(s.fecha()))
 
                         .append("\",\"estado\":\"")
@@ -389,6 +434,7 @@ public class ServidorWeb {
 
             if (juego == null ||
                     !Set.of("Valorant", "LoL", "CS2").contains(juego)) {
+
                 throw new IllegalArgumentException(
                         "Juego no permitido"
                 );
@@ -396,6 +442,7 @@ public class ServidorWeb {
 
             if (region == null ||
                     !Set.of("LAS", "LAN", "BR").contains(region)) {
+
                 throw new IllegalArgumentException(
                         "Region no permitida"
                 );
@@ -403,6 +450,7 @@ public class ServidorWeb {
 
             if (formato == null ||
                     !Set.of("1v1", "3v3", "5v5").contains(formato)) {
+
                 throw new IllegalArgumentException(
                         "Formato no permitido"
                 );
@@ -415,6 +463,7 @@ public class ServidorWeb {
             int cupos = entero(datos, "cupos");
 
             if (rangoMax > 10 || rangoMin > rangoMax) {
+
                 throw new IllegalArgumentException(
                         "Los rangos de la partida no son validos"
                 );
@@ -428,6 +477,7 @@ public class ServidorWeb {
             };
 
             if (cupos != cuposFormato) {
+
                 throw new IllegalArgumentException(
                         "Los cupos no coinciden con el formato"
                 );
@@ -437,7 +487,6 @@ public class ServidorWeb {
                     datos.getOrDefault("fechaHora", "")
             );
 
-            // la cuenta administradora no necesita registro en usuarios
             Integer creadorId = null;
 
             int id = facade.crearScrim(
@@ -508,6 +557,7 @@ public class ServidorWeb {
                 case "GET" -> {
 
                     if (!"JUGADOR".equals(sesion.rol())) {
+
                         error(
                                 ex,
                                 403,
@@ -586,12 +636,15 @@ public class ServidorWeb {
         } catch (SQLException e) {
 
             if ("23505".equals(e.getSQLState())) {
+
                 error(
                         ex,
                         409,
                         "Ya existe una postulacion para esta partida"
                 );
+
             } else {
+
                 errorBaseDatos(ex, e);
             }
         }
@@ -987,6 +1040,7 @@ public class ServidorWeb {
                             : 70;
 
             if (compatibilidadMinima > 100) {
+
                 throw new IllegalArgumentException(
                         "La compatibilidad debe estar entre 0 y 100"
                 );
@@ -1094,7 +1148,7 @@ public class ServidorWeb {
         for (PostulacionRepository.PostulacionGuardada p : lista) {
 
             if (json.length() > 1) {
-                json.append(',');
+                json.append(",");
             }
 
             json.append("{")
@@ -1198,6 +1252,7 @@ public class ServidorWeb {
         WebAuthService.Sesion sesion = sesionActual(ex);
 
         if (sesion == null) {
+
             error(
                     ex,
                     401,
@@ -1219,11 +1274,13 @@ public class ServidorWeb {
         }
 
         if (!esOrganizadorAutorizado(sesion)) {
+
             error(
                     ex,
                     403,
                     "Solo el organizador autorizado puede acceder"
             );
+
             return null;
         }
 
@@ -1236,6 +1293,7 @@ public class ServidorWeb {
 
         if (sesion == null ||
                 !"ORGANIZADOR".equals(sesion.rol())) {
+
             return false;
         }
 
@@ -1246,6 +1304,7 @@ public class ServidorWeb {
         }
 
         if (!produccion) {
+
             return email.equalsIgnoreCase(
                     "organizador@escrims.local"
             );
@@ -1325,6 +1384,7 @@ public class ServidorWeb {
         byte[] bytes = ex.getRequestBody().readNBytes(8193);
 
         if (bytes.length > 8192) {
+
             throw new IllegalArgumentException(
                     "Solicitud demasiado grande"
             );
