@@ -24,6 +24,9 @@ const seccionOrganizador = document.getElementById("organizador");
 const listaOrganizador = document.getElementById("listaOrganizador");
 const actualizarOrganizadorBoton = document.getElementById("actualizarOrganizador");
 
+const listaLobbies = document.getElementById("listaLobbies");
+const actualizarLobbiesBoton = document.getElementById("actualizarLobbies");
+
 const navPostulaciones = document.getElementById("navPostulaciones");
 const navOrganizador = document.getElementById("navOrganizador");
 
@@ -1093,7 +1096,126 @@ function crearPostulacion(postulacion) {
         )
     );
 
+    if (clase === "aceptada") {
+        const bloque = crearElemento("div", "lobby-bloque");
+        tarjeta.append(bloque);
+        cargarLobby(postulacion.scrimId, bloque);
+    }
+
     return tarjeta;
+}
+
+const mensajesLobby = {
+    "Buscando jugadores": "Todavía se están completando los cupos.",
+    "Lobby armado": "Lobby completo. Confirmá tu participación.",
+    "Confirmado": "Todos confirmaron. Esperando el inicio de la partida.",
+    "En juego": "¡La partida está en juego!",
+    "Finalizado": "La partida finalizó. GG.",
+    "Cancelado": "La partida fue cancelada."
+};
+
+function crearListaJugadoresLobby(lobby) {
+    const lista = crearElemento("ul", "lobby-jugadores");
+
+    lobby.jugadores.forEach(jugador => {
+        lista.append(
+            crearElemento(
+                "li",
+                "lobby-jugador" + (jugador.confirmado ? " confirmado" : ""),
+                (jugador.confirmado ? "✓ " : "… ") + jugador.usuario
+            )
+        );
+    });
+
+    return lista;
+}
+
+async function cargarLobby(scrimId, bloque) {
+    try {
+        const lobby = await api("/api/lobby?scrimId=" + scrimId);
+
+        const encabezado = crearElemento(
+            "p",
+            "lobby-estado",
+            "LOBBY · " + String(lobby.estado).toUpperCase() +
+            " · " + lobby.confirmados + "/" + lobby.cupos + " CONFIRMADOS"
+        );
+
+        const mensaje = crearElemento(
+            "p",
+            "postulacion-mensaje",
+            lobby.estado === "Lobby armado" && lobby.yoConfirme
+                ? "Ya confirmaste. Esperando a los demás jugadores."
+                : mensajesLobby[lobby.estado] || ""
+        );
+
+        const contenido = [
+            encabezado,
+            crearListaJugadoresLobby(lobby),
+            mensaje
+        ];
+
+        if (lobby.estado === "Lobby armado" && lobby.yoParticipo && !lobby.yoConfirme) {
+            const boton = crearElemento(
+                "button",
+                "postular-button",
+                "CONFIRMAR PARTICIPACIÓN"
+            );
+
+            boton.type = "button";
+            boton.addEventListener("click", () =>
+                confirmarParticipacion(scrimId, boton)
+            );
+
+            contenido.push(boton);
+        }
+
+        bloque.replaceChildren(...contenido);
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        bloque.replaceChildren(
+            crearElemento(
+                "p",
+                "postulacion-mensaje",
+                "No se pudo cargar el estado del lobby."
+            )
+        );
+    }
+}
+
+async function confirmarParticipacion(scrimId, boton) {
+    boton.disabled = true;
+
+    try {
+        const respuesta = await enviarFormulario(
+            "/api/lobby/confirmar",
+            { scrimId }
+        );
+
+        notificar(
+            "exito",
+            "Participación confirmada",
+            respuesta.confirmados + " de " + respuesta.cupos +
+            " jugadores confirmaron."
+        );
+
+        await cargarPostulaciones();
+        await cargarScrims();
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        notificar("error", "No se pudo confirmar", error.message);
+        boton.disabled = false;
+    }
 }
 
 async function cargarPostulaciones() {
@@ -1246,6 +1368,8 @@ async function cargarOrganizador() {
         return;
     }
 
+    cargarLobbies();
+
     try {
         const datos = await api("/api/organizador/postulaciones");
         const solicitudes = Array.isArray(datos) ? datos : [];
@@ -1292,6 +1416,170 @@ async function cargarOrganizador() {
             listaOrganizador,
             "No se pudieron cargar las solicitudes."
         );
+    }
+}
+
+const accionesLobby = {
+    "Buscando jugadores": ["cancelar"],
+    "Lobby armado": ["cancelar"],
+    "Confirmado": ["iniciar", "cancelar"],
+    "En juego": ["finalizar"]
+};
+
+const etiquetasAccionLobby = {
+    iniciar: "INICIAR",
+    finalizar: "FINALIZAR",
+    cancelar: "CANCELAR"
+};
+
+async function crearTarjetaLobby(scrim) {
+    const tarjeta = crearElemento("article", "organizador-card");
+    const cabecera = crearElemento("div", "organizador-card-cabecera");
+    const titulo = crearElemento("div");
+
+    titulo.append(
+        crearElemento("span", "postulacion-id", "SCRIM #" + scrim.id),
+        crearElemento("h4", "organizador-juego", nombreJuego(scrim.juego))
+    );
+
+    cabecera.append(
+        titulo,
+        crearElemento(
+            "span",
+            "postulacion-estado aceptada",
+            String(scrim.estado).toUpperCase()
+        )
+    );
+
+    const detalles = crearElemento("div", "organizador-card-detalles");
+
+    detalles.append(
+        crearDetalle("Región", scrim.region),
+        crearDetalle("Formato", scrim.formato),
+        crearDetalle("Fecha", formatearFecha(scrim.fecha))
+    );
+
+    tarjeta.append(cabecera, detalles);
+
+    if (scrim.estado === "Lobby armado" || scrim.estado === "Confirmado") {
+        try {
+            const lobby = await api("/api/lobby?scrimId=" + scrim.id);
+
+            tarjeta.append(
+                crearElemento(
+                    "p",
+                    "lobby-estado",
+                    "CONFIRMACIONES · " + lobby.confirmados + "/" + lobby.cupos
+                ),
+                crearListaJugadoresLobby(lobby)
+            );
+
+        } catch (error) {
+            tarjeta.append(
+                crearElemento(
+                    "p",
+                    "postulacion-mensaje",
+                    "No se pudo leer el progreso de confirmaciones."
+                )
+            );
+        }
+    }
+
+    const acciones = crearElemento("div", "organizador-card-acciones");
+    const botones = [];
+
+    (accionesLobby[scrim.estado] || []).forEach(accion => {
+        const boton = crearElemento(
+            "button",
+            accion === "cancelar"
+                ? "organizador-rechazar"
+                : "organizador-aceptar",
+            etiquetasAccionLobby[accion]
+        );
+
+        boton.type = "button";
+        boton.addEventListener("click", () =>
+            gestionarLobby(scrim, accion, botones)
+        );
+
+        botones.push(boton);
+        acciones.append(boton);
+    });
+
+    if (botones.length > 0) {
+        tarjeta.append(acciones);
+    }
+
+    return tarjeta;
+}
+
+async function cargarLobbies() {
+    if (!usuario || usuario.rol !== "ORGANIZADOR") {
+        return;
+    }
+
+    try {
+        const datos = await api("/api/scrims");
+
+        const activas = (Array.isArray(datos) ? datos : [])
+            .filter(s => accionesLobby[s.estado]);
+
+        if (activas.length === 0) {
+            mostrarMensaje(
+                listaLobbies,
+                "No hay partidas activas para gestionar.",
+                "feliz"
+            );
+            return;
+        }
+
+        const tarjetas = await Promise.all(activas.map(crearTarjetaLobby));
+        listaLobbies.replaceChildren(...tarjetas);
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        mostrarMensaje(
+            listaLobbies,
+            "No se pudieron cargar las partidas."
+        );
+    }
+}
+
+async function gestionarLobby(scrim, accion, botones) {
+    botones.forEach(boton => {
+        boton.disabled = true;
+    });
+
+    try {
+        await enviarFormulario(
+            "/api/organizador/lobby",
+            { scrimId: scrim.id, accion }
+        );
+
+        notificar(
+            "exito",
+            "Partida actualizada",
+            nombreJuego(scrim.juego) + " · scrim #" + scrim.id
+        );
+
+        await cargarLobbies();
+        await cargarScrims();
+
+    } catch (error) {
+        if (error.status === 401) {
+            sesionVencida();
+            return;
+        }
+
+        notificar("error", "No se pudo actualizar", error.message);
+
+        botones.forEach(boton => {
+            boton.disabled = false;
+        });
     }
 }
 
@@ -1917,6 +2205,7 @@ formRegistro.addEventListener("submit", evento =>
 cerrarSesionBoton.addEventListener("click", cerrarSesion);
 actualizarPostulacionesBoton.addEventListener("click", cargarPostulaciones);
 actualizarOrganizadorBoton.addEventListener("click", cargarOrganizador);
+actualizarLobbiesBoton.addEventListener("click", cargarLobbies);
 
 if (formatoCrearScrim) {
     formatoCrearScrim.addEventListener(

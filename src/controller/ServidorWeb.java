@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import domain.Usuario;
 import facade.EscrimsFacade;
 import matchmaking.Candidato;
+import persistence.LobbyRepository;
 import persistence.PostulacionRepository;
 import persistence.ScrimRepository;
 import service.NotificacionScrimService;
@@ -25,6 +26,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class ServidorWeb {
 
@@ -37,6 +41,7 @@ public class ServidorWeb {
     private final Path carpetaWeb = Path.of("src", "web");
 
     private final HttpServer servidor;
+    private ScheduledExecutorService planificador;
     private final int puerto;
     private final boolean produccion;
     private final String origenPublico;
@@ -94,6 +99,13 @@ public class ServidorWeb {
         servidor.createContext(
                 "/api/organizador/recomendaciones",
                 this::manejarRecomendaciones
+        );
+
+        servidor.createContext("/api/lobby", this::manejarLobby);
+
+        servidor.createContext(
+                "/api/organizador/lobby",
+                this::manejarOrganizadorLobby
         );
 
         servidor.createContext("/", this::servirPagina);
@@ -692,6 +704,249 @@ public class ServidorWeb {
 
             errorBaseDatos(ex, e);
         }
+    }
+
+    private void manejarLobby(HttpExchange ex)
+            throws IOException {
+
+        String ruta = ex.getRequestURI().getPath();
+
+        WebAuthService.Sesion sesion = requerirSesion(ex);
+
+        if (sesion == null) {
+            return;
+        }
+
+        try {
+
+            if (ruta.equals("/api/lobby")) {
+
+                if (!ex.getRequestMethod().equals("GET")) {
+                    error(ex, 405, "Metodo no permitido");
+                    return;
+                }
+
+                int scrimId = entero(
+                        leerParametros(ex.getRequestURI().getRawQuery()),
+                        "scrimId"
+                );
+
+                LobbyRepository.EstadoLobby lobby =
+                        facade.consultarLobby(scrimId);
+
+                int usuarioId = sesion.usuario().getId();
+
+                boolean participa = lobby.jugadores()
+                        .stream()
+                        .anyMatch(j -> j.usuarioId() == usuarioId);
+
+                if (!participa && !esOrganizadorAutorizado(sesion)) {
+                    error(
+                            ex,
+                            403,
+                            "No participas en esta partida"
+                    );
+                    return;
+                }
+
+                enviarJson(ex, 200, lobbyJson(lobby, usuarioId));
+                return;
+            }
+
+            if (ruta.equals("/api/lobby/confirmar")) {
+
+                if (!ex.getRequestMethod().equals("POST")) {
+                    error(ex, 405, "Metodo no permitido");
+                    return;
+                }
+
+                if (!validarOrigen(ex) || !validarFormulario(ex)) {
+                    return;
+                }
+
+                if (!"JUGADOR".equals(sesion.rol())) {
+                    error(
+                            ex,
+                            403,
+                            "Solo los jugadores pueden confirmar"
+                    );
+                    return;
+                }
+
+                int scrimId = entero(formulario(ex), "scrimId");
+
+                LobbyRepository.ResultadoConfirmacion resultado =
+                        facade.confirmarParticipacion(
+                                sesion.usuario().getId(),
+                                scrimId
+                        );
+
+                // el aviso sale despues de que la transaccion se confirmo
+                notificarTransicion(resultado.transicion());
+
+                enviarJson(
+                        ex,
+                        200,
+                        "{"
+                                + "\"mensaje\":\"Participacion confirmada\","
+                                + "\"scrimId\":" + scrimId
+                                + ",\"confirmados\":" + resultado.confirmados()
+                                + ",\"cupos\":" + resultado.cupos()
+                                + ",\"estado\":\""
+                                + escapar(
+                                resultado.transicion() == null
+                                        ? "Lobby armado"
+                                        : resultado.transicion().estadoNuevo()
+                        )
+                                + "\"}"
+                );
+                return;
+            }
+
+            error(ex, 404, "Ruta no encontrada");
+
+        } catch (IllegalArgumentException e) {
+
+            error(ex, 400, e.getMessage());
+
+        } catch (IllegalStateException e) {
+
+            error(ex, 409, e.getMessage());
+
+        } catch (SQLException e) {
+
+            errorBaseDatos(ex, e);
+        }
+    }
+
+    private void manejarOrganizadorLobby(HttpExchange ex)
+            throws IOException {
+
+        if (!ex.getRequestURI().getPath()
+                .equals("/api/organizador/lobby")) {
+
+            error(ex, 404, "Ruta no encontrada");
+            return;
+        }
+
+        if (!ex.getRequestMethod().equals("POST")) {
+            error(ex, 405, "Metodo no permitido");
+            return;
+        }
+
+        WebAuthService.Sesion sesion = requerirOrganizador(ex);
+
+        if (sesion == null) {
+            return;
+        }
+
+        try {
+
+            if (!validarOrigen(ex) || !validarFormulario(ex)) {
+                return;
+            }
+
+            Map<String, String> datos = formulario(ex);
+            int scrimId = entero(datos, "scrimId");
+
+            LobbyRepository.Transicion transicion =
+                    facade.transicionarScrim(
+                            scrimId,
+                            datos.get("accion")
+                    );
+
+            notificarTransicion(transicion);
+
+            enviarJson(
+                    ex,
+                    200,
+                    "{"
+                            + "\"mensaje\":\"Partida actualizada\","
+                            + "\"scrimId\":" + scrimId
+                            + ",\"estado\":\""
+                            + escapar(transicion.estadoNuevo())
+                            + "\"}"
+            );
+
+        } catch (IllegalArgumentException e) {
+
+            error(ex, 400, e.getMessage());
+
+        } catch (IllegalStateException e) {
+
+            error(ex, 409, e.getMessage());
+
+        } catch (SQLException e) {
+
+            errorBaseDatos(ex, e);
+        }
+    }
+
+    private void notificarTransicion(
+            LobbyRepository.Transicion transicion
+    ) {
+
+        if (transicion == null) {
+            return;
+        }
+
+        try {
+
+            notificaciones.notificarCambio(
+                    transicion.scrimId(),
+                    transicion.juego(),
+                    transicion.estadoAnterior(),
+                    transicion.estadoNuevo()
+            );
+
+        } catch (RuntimeException e) {
+
+            System.err.println(
+                    "No se pudo enviar la notificacion del lobby"
+            );
+        }
+    }
+
+    private String lobbyJson(
+            LobbyRepository.EstadoLobby lobby,
+            int usuarioId
+    ) {
+
+        boolean participa = false;
+        boolean confirme = false;
+
+        StringBuilder jugadores = new StringBuilder("[");
+
+        for (LobbyRepository.JugadorLobby j : lobby.jugadores()) {
+
+            if (j.usuarioId() == usuarioId) {
+                participa = true;
+                confirme = j.confirmado();
+            }
+
+            if (jugadores.length() > 1) {
+                jugadores.append(",");
+            }
+
+            jugadores.append("{\"usuario\":\"")
+                    .append(escapar(j.username()))
+                    .append("\",\"confirmado\":")
+                    .append(j.confirmado())
+                    .append("}");
+        }
+
+        jugadores.append("]");
+
+        return "{"
+                + "\"scrimId\":" + lobby.scrimId()
+                + ",\"juego\":\"" + escapar(lobby.juego()) + "\""
+                + ",\"estado\":\"" + escapar(lobby.estado()) + "\""
+                + ",\"cupos\":" + lobby.cupos()
+                + ",\"confirmados\":" + lobby.confirmados()
+                + ",\"yoParticipo\":" + participa
+                + ",\"yoConfirme\":" + confirme
+                + ",\"jugadores\":" + jugadores
+                + "}";
     }
 
     private void manejarRecomendaciones(HttpExchange ex)
@@ -1323,6 +1578,8 @@ public class ServidorWeb {
 
         servidor.start();
 
+        iniciarPlanificador();
+
         System.out.println("Servidor eScrims iniciado");
 
         System.out.println(
@@ -1338,7 +1595,55 @@ public class ServidorWeb {
         );
     }
 
+    // inicia y finaliza automaticamente las partidas por horario
+    private void iniciarPlanificador() {
+
+        planificador = Executors.newSingleThreadScheduledExecutor(
+                tarea -> {
+                    Thread hilo = new Thread(tarea, "planificador-scrims");
+                    hilo.setDaemon(true);
+                    return hilo;
+                }
+        );
+
+        planificador.scheduleAtFixedRate(
+                () -> {
+                    try {
+
+                        // inicia las confirmadas cuyo horario llego
+                        for (LobbyRepository.Transicion t
+                                : facade.iniciarProgramadas()) {
+
+                            notificarTransicion(t);
+                        }
+
+                        // finaliza las que superaron fecha + duracion
+                        for (LobbyRepository.Transicion t
+                                : facade.finalizarVencidas()) {
+
+                            notificarTransicion(t);
+                        }
+
+                    } catch (SQLException | RuntimeException e) {
+
+                        System.err.println(
+                                "Error en el planificador: "
+                                        + e.getMessage()
+                        );
+                    }
+                },
+                30,
+                30,
+                TimeUnit.SECONDS
+        );
+    }
+
     public void detener() {
+
+        if (planificador != null) {
+            planificador.shutdownNow();
+        }
+
         servidor.stop(0);
     }
 
